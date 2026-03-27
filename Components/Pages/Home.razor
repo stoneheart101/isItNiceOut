@@ -8,70 +8,60 @@
 
 @* ── Saved places + search toggle ── *@
 <div class="mb-3 d-flex flex-wrap gap-2 align-items-center">
-    @if (location != null)
-    {
-        <div class="badge rounded-pill d-flex align-items-center px-2 py-2"
-             style="background:#2a2a2a; border:1px solid @(showMtb ? "#4ade80" : "#333"); cursor:pointer; font-size:.9rem; color:@(showMtb ? "#4ade80" : "#444");"
-             title="@(showMtb ? "Hide MTB highlights" : "Show MTB highlights")"
-             @onclick="() => ToggleMtb(location.Latitude, location.Longitude)">🚲</div>
-    }
-    <span class="text-secondary small">Saved:</span>
-
     <div class="badge rounded-pill d-flex align-items-center gap-1 px-3 py-2"
          style="background:#2a2a2a; border:1px solid @(IsGranbyActive ? "#ffc107" : "#444"); cursor:pointer; font-size:.85rem;"
          @onclick="LoadGranby">
-        📍 Granby, CT
+        Granby, CT
     </div>
 
     @foreach (var place in savedPlaces)
     {
         <div class="badge rounded-pill d-flex align-items-center gap-1 px-3 py-2"
-             style="background:#2a2a2a; border:1px solid #444; cursor:pointer; font-size:.85rem;"
+             style="background:#2a2a2a; border:1px solid @(IsPlaceActive(place) ? "#ffc107" : "#444"); cursor:pointer; font-size:.85rem;"
              @onclick="() => LoadSavedPlace(place)">
-            <span>📍 @place.DisplayName</span>
-            <span class="ms-1 text-secondary"
-                  style="cursor:pointer; font-size:.75rem; line-height:1;"
-                  @onclick:stopPropagation
-                  @onclick="() => RemoveSavedPlace(place)">✕</span>
+            <span>@place.DisplayName</span>
         </div>
     }
 
-    <button class="btn btn-sm btn-outline-secondary ms-auto"
-            @onclick="() => { showSearch = !showSearch; showSuggestions = false; }"
-            title="Search for a town">
-        @(showSearch ? "✕ Close" : "🔍 Search")
-    </button>
 </div>
 
-@* ── Town typeahead (collapsible) ── *@
-@if (showSearch)
+@* ── Add location modal ── *@
+@if (showLocationModal)
 {
-    <div class="row g-2 mb-3">
-        <div class="col-sm-8 col-md-6 position-relative">
-            <input id="townSearch"
-                   class="form-control"
-                   placeholder="Search a US town…"
-                   autocomplete="off"
-                   value="@cityInput"
-                   @oninput="OnTownInput"
-                   @onkeydown="OnKeyDown"
-                   @onfocus="() => showSuggestions = suggestions.Count > 0"
-                   @onblur="OnBlur" />
-
-            @if (showSuggestions && suggestions.Count > 0)
-            {
-                <div class="list-group shadow position-absolute w-100 z-3" style="top:100%; left:0;">
-                    @foreach (var s in suggestions)
+    <div class="wx-modal-backdrop" @onclick="CloseLocationModal"></div>
+    <div class="wx-modal-wrap" @onclick="CloseLocationModal">
+        <div class="wx-modal-card" @onclick:stopPropagation="true">
+            <div class="wx-modal-header">
+                <span class="fw-semibold">Add Location</span>
+                <button class="btn-close btn-close-white btn-sm" @onclick="CloseLocationModal"></button>
+            </div>
+            <div class="wx-modal-body">
+                <div class="position-relative">
+                    <input id="townSearch"
+                           class="form-control bg-dark text-light border-secondary"
+                           placeholder="Search a US town…"
+                           autocomplete="off"
+                           value="@cityInput"
+                           @oninput="OnTownInput"
+                           @onkeydown="OnKeyDown"
+                           @onfocus="() => showSuggestions = suggestions.Count > 0"
+                           @onblur="OnBlur" />
+                    @if (showSuggestions && suggestions.Count > 0)
                     {
-                        var label = $"{s.Name}{(s.Region != null ? ", " + s.Region : "")}, {s.Country}";
-                        <button type="button"
-                                class="list-group-item list-group-item-action bg-dark text-light border-secondary py-2"
-                                @onmousedown="() => SelectSuggestion(s)">
-                            📍 @label
-                        </button>
+                        <div class="list-group shadow position-absolute w-100 z-3" style="top:100%; left:0;">
+                            @foreach (var s in suggestions)
+                            {
+                                var label = $"{s.Name}{(s.Region != null ? ", " + s.Region : "")}, {s.Country}";
+                                <button type="button"
+                                        class="list-group-item list-group-item-action bg-dark text-light border-secondary py-2"
+                                        @onmousedown="() => SelectSuggestion(s)">
+                                    @label
+                                </button>
+                            }
+                        </div>
                     }
                 </div>
-            }
+            </div>
         </div>
     </div>
 }
@@ -81,37 +71,80 @@
     <div class="alert alert-danger">@errorMessage</div>
 }
 
-@* ── Location header + save / refresh controls ── *@
-@if (location != null)
+@* ── Unsaved current location pill (only when not already pinned) ── *@
+@if (location != null && !IsCurrentLocationSaved())
 {
-    <div class="d-flex align-items-center flex-wrap gap-3 mb-3">
-        <h5 class="mb-0 text-secondary">
-            📍 @location.Name@(location.Region != null ? $", {location.Region}" : ""), @location.Country
-        </h5>
+    <div class="mb-3 d-flex flex-wrap gap-2 align-items-center">
+        <div class="badge rounded-pill d-flex align-items-center gap-1 px-3 py-2"
+             style="background:#2a2a2a; border:1px solid #ffc107; font-size:.85rem;">
+            <span>@location.Name@(location.Region != null ? $", {location.Region}" : "")</span>
+            <span class="ms-1" style="cursor:pointer; color:#ffc107; font-size:.8rem;" @onclick="SaveCurrentPlace" title="Save this location">☆</span>
+        </div>
+    </div>
+}
 
-        @if (!IsCurrentLocationSaved())
+@* ── Indicators modal ── *@
+@if (showIndicatorsModal)
+{
+    <div class="wx-modal-backdrop" @onclick="() => showIndicatorsModal = false"></div>
+    <div class="wx-modal-wrap" @onclick="() => showIndicatorsModal = false">
+        <div class="wx-modal-card" @onclick:stopPropagation="true">
+            <div class="wx-modal-header">
+                <span class="fw-semibold">@modalLocationName</span>
+                <button class="btn-close btn-close-white btn-sm" @onclick="() => showIndicatorsModal = false"></button>
+            </div>
+            <div class="wx-modal-body">
+                <p class="text-secondary small mb-3">Choose which indicators to highlight for this location.</p>
+                <div class="wx-indicator-row">
+                    <div>
+                        <div class="fw-semibold small">Mountain biking days</div>
+                        <div class="text-secondary" style="font-size:.75rem;">Highlight days with good riding conditions</div>
+                    </div>
+                    <div class="form-check form-switch mb-0">
+                        <input class="form-check-input" type="checkbox" role="switch"
+                               checked="@MtbOnFor(modalLat, modalLon)"
+                               @onchange="async _ => await ToggleMtb(modalLat, modalLon)" />
+                    </div>
+                </div>
+                @if (ModalSavedPlace != null)
+                {
+                    <hr class="border-secondary my-3" />
+                    <button class="btn btn-sm btn-outline-danger w-100"
+                            @onclick="RemoveModalLocation">Remove this location</button>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@* ── Floating action buttons (bottom-right stack) ── *@
+<div class="wx-fab-group">
+    <div class="wx-fab-sm" @onclick="() => showLocationModal = true" title="Add location">+</div>
+    @if (location != null)
+    {
+        <div class="wx-fab-sm" title="Location settings"
+             @onclick='() => OpenIndicatorsModal(location.Latitude, location.Longitude, location.Name + (location.Region != null ? ", " + location.Region : ""))'>⚙</div>
+    }
+    <div class="wx-fab" @onclick="ManualRefresh" title="@(loading ? "Loading…" : "Refresh now")"
+         style="@(loading ? "pointer-events:none;" : "")">
+        <svg class="wx-fab-ring" viewBox="0 0 52 52">
+            <circle class="wx-fab-ring-bg" cx="26" cy="26" r="22" />
+            @if (!loading)
+            {
+                <circle class="wx-fab-ring-fill" cx="26" cy="26" r="22"
+                        style="stroke-dashoffset:@(FabRingOffset)" />
+            }
+        </svg>
+        @if (loading)
         {
-            <button class="btn btn-sm btn-outline-secondary" @onclick="SaveCurrentPlace" title="Save this location">
-                ☆ Save
-            </button>
+            <span class="spinner-border text-warning wx-fab-spinner" role="status"></span>
         }
         else
         {
-            <span class="text-warning small">★ Saved</span>
+            <span class="wx-fab-icon">↺</span>
         }
-
-        <div class="ms-auto">
-            <button class="btn btn-sm btn-outline-secondary" @onclick="ManualRefresh" disabled="@loading" title="Refresh now">
-                ↺ @FormatCountdown()
-            </button>
-        </div>
     </div>
-
-    <div class="progress mb-3" style="height:2px; background:#2a2a2a;">
-        <div class="progress-bar bg-warning"
-             style="width:@(((RefreshIntervalSeconds - secondsLeft) * 100.0 / RefreshIntervalSeconds).ToString("F1"))%; transition:width 1s linear;"></div>
-    </div>
-}
+</div>
 
 @* ── Hourly view (shown when a day is clicked) ── *@
 @if (hourlyLoading)
@@ -236,11 +269,11 @@ else if (hourlyDisplay.Count > 0)
         }
     </div>
 }
-else if (loading)
+else
 {
     <div class="text-center text-secondary py-5">
         <div class="spinner-border text-warning" role="status"></div>
-        <p class="mt-2">Loading forecast…</p>
+        <p class="mt-2 small">Loading forecast…</p>
     </div>
 }
 
@@ -252,7 +285,15 @@ else if (loading)
     // ── State ──────────────────────────────────────────────────────────────
     string cityInput = "";
     bool loading = false;
-    bool showSearch = false;
+    bool showLocationModal = false;
+
+    void CloseLocationModal()
+    {
+        showLocationModal = false;
+        cityInput = "";
+        suggestions = [];
+        showSuggestions = false;
+    }
     string? errorMessage;
     GeoLocation? location;
     WeatherForecast? forecast;
@@ -279,6 +320,31 @@ else if (loading)
 
     // ── Freeze line (shared bar scale) ─────────────────────────────────────
     int freezeLinePct = 0;
+
+    // ── Indicators modal ───────────────────────────────────────────────────
+    bool showIndicatorsModal = false;
+    double modalLat = 0, modalLon = 0;
+    string modalLocationName = "";
+
+    void OpenIndicatorsModal(double lat, double lon, string name)
+    {
+        modalLat = lat;
+        modalLon = lon;
+        modalLocationName = name;
+        showIndicatorsModal = true;
+    }
+
+    SavedPlace? ModalSavedPlace =>
+        savedPlaces.FirstOrDefault(p =>
+            Math.Abs(p.Latitude - modalLat) < 0.01 &&
+            Math.Abs(p.Longitude - modalLon) < 0.01);
+
+    async Task RemoveModalLocation()
+    {
+        var place = ModalSavedPlace;
+        showIndicatorsModal = false;
+        if (place != null) await RemoveSavedPlace(place);
+    }
 
     // ── MTB preferences (per location) ────────────────────────────────────
     Dictionary<string, bool> mtbPrefs = new();
@@ -477,10 +543,7 @@ else if (loading)
 
     async Task SelectSuggestion(GeoLocation loc)
     {
-        cityInput = $"{loc.Name}{(loc.Region != null ? ", " + loc.Region : "")}, {loc.Country}";
-        suggestions = [];
-        showSuggestions = false;
-        showSearch = false;
+        CloseLocationModal();
         errorMessage = null;
         loading = true;
         StateHasChanged();
@@ -490,7 +553,7 @@ else if (loading)
 
     async Task OnKeyDown(KeyboardEventArgs e)
     {
-        if (e.Key == "Escape") { showSearch = false; showSuggestions = false; suggestions = []; }
+        if (e.Key == "Escape") CloseLocationModal();
         if (e.Key == "Enter" && suggestions.Count > 0) await SelectSuggestion(suggestions[0]);
     }
 
@@ -594,8 +657,10 @@ else if (loading)
 
     async Task RemoveSavedPlace(SavedPlace place)
     {
+        bool wasActive = IsPlaceActive(place);
         savedPlaces.Remove(place);
         await PersistSavedPlaces();
+        if (wasActive) await LoadGranby();
     }
 
     async Task LoadSavedPlace(SavedPlace place)
@@ -610,6 +675,11 @@ else if (loading)
         try { await ApplyLocation(loc); }
         finally { loading = false; StateHasChanged(); }
     }
+
+    bool IsPlaceActive(SavedPlace place) =>
+        location != null &&
+        Math.Abs(location.Latitude - place.Latitude) < 0.01 &&
+        Math.Abs(location.Longitude - place.Longitude) < 0.01;
 
     bool IsCurrentLocationSaved() =>
         IsGranbyActive ||
@@ -672,6 +742,12 @@ else if (loading)
 
         return days;
     }
+
+    // ── Refresh FAB ring ───────────────────────────────────────────────────
+    // Circumference of r=22 circle: 2π×22 ≈ 138.23
+    // Offset shrinks from 138.23 (full, just refreshed) → 0 (ring complete, about to refresh)
+    string FabRingOffset =>
+        (138.23 * (double)secondsLeft / RefreshIntervalSeconds).ToString("F1");
 
     // ── Helpers ────────────────────────────────────────────────────────────
     string FormatCountdown()
