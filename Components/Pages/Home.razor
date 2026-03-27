@@ -1,0 +1,556 @@
+@page "/"
+@rendermode InteractiveServer
+@inject WeatherService Weather
+@inject IJSRuntime JS
+@implements IDisposable
+
+<PageTitle>Is It Nice Out?</PageTitle>
+
+@* ── Saved places + search toggle ── *@
+<div class="mb-3 d-flex flex-wrap gap-2 align-items-center">
+    <span class="text-secondary small">Saved:</span>
+
+    <div class="badge rounded-pill d-flex align-items-center gap-1 px-3 py-2"
+         style="background:#2a2a2a; border:1px solid @(IsGranbyActive ? "#ffc107" : "#444"); cursor:pointer; font-size:.85rem;"
+         @onclick="LoadGranby">
+        📍 Granby, CT
+    </div>
+
+    @foreach (var place in savedPlaces)
+    {
+        <div class="badge rounded-pill d-flex align-items-center gap-1 px-3 py-2"
+             style="background:#2a2a2a; border:1px solid #444; cursor:pointer; font-size:.85rem;"
+             @onclick="() => LoadSavedPlace(place)">
+            <span>📍 @place.DisplayName</span>
+            <span class="ms-2 text-secondary"
+                  style="cursor:pointer; font-size:.75rem; line-height:1;"
+                  @onclick:stopPropagation
+                  @onclick="() => RemoveSavedPlace(place)">✕</span>
+        </div>
+    }
+
+    <button class="btn btn-sm btn-outline-secondary ms-auto"
+            @onclick="() => { showSearch = !showSearch; showSuggestions = false; }"
+            title="Search for a town">
+        @(showSearch ? "✕ Close" : "🔍 Search")
+    </button>
+</div>
+
+@* ── Town typeahead (collapsible) ── *@
+@if (showSearch)
+{
+    <div class="row g-2 mb-3">
+        <div class="col-sm-8 col-md-6 position-relative">
+            <input id="townSearch"
+                   class="form-control"
+                   placeholder="Search a US town…"
+                   autocomplete="off"
+                   value="@cityInput"
+                   @oninput="OnTownInput"
+                   @onkeydown="OnKeyDown"
+                   @onfocus="() => showSuggestions = suggestions.Count > 0"
+                   @onblur="OnBlur" />
+
+            @if (showSuggestions && suggestions.Count > 0)
+            {
+                <div class="list-group shadow position-absolute w-100 z-3" style="top:100%; left:0;">
+                    @foreach (var s in suggestions)
+                    {
+                        var label = $"{s.Name}{(s.Region != null ? ", " + s.Region : "")}, {s.Country}";
+                        <button type="button"
+                                class="list-group-item list-group-item-action bg-dark text-light border-secondary py-2"
+                                @onmousedown="() => SelectSuggestion(s)">
+                            📍 @label
+                        </button>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@if (errorMessage != null)
+{
+    <div class="alert alert-danger">@errorMessage</div>
+}
+
+@* ── Location header + save / refresh controls ── *@
+@if (location != null)
+{
+    <div class="d-flex align-items-center flex-wrap gap-3 mb-3">
+        <h5 class="mb-0 text-secondary">
+            📍 @location.Name@(location.Region != null ? $", {location.Region}" : ""), @location.Country
+        </h5>
+
+        @if (!IsCurrentLocationSaved())
+        {
+            <button class="btn btn-sm btn-outline-secondary" @onclick="SaveCurrentPlace" title="Save this location">
+                ☆ Save
+            </button>
+        }
+        else
+        {
+            <span class="text-warning small">★ Saved</span>
+        }
+
+        <div class="ms-auto d-flex align-items-center gap-2">
+            <span class="text-secondary small" title="Next auto-refresh">
+                ↻ @FormatCountdown()
+            </span>
+            <button class="btn btn-sm btn-outline-secondary" @onclick="ManualRefresh" disabled="@loading" title="Refresh now">
+                ↺
+            </button>
+        </div>
+    </div>
+
+    <div class="progress mb-3" style="height:2px; background:#2a2a2a;">
+        <div class="progress-bar bg-warning"
+             style="width:@(((RefreshIntervalSeconds - secondsLeft) * 100.0 / RefreshIntervalSeconds).ToString("F1"))%; transition:width 1s linear;"></div>
+    </div>
+}
+
+@* ── Hourly view (shown when a day is clicked) ── *@
+@if (hourlyLoading)
+{
+    <div class="text-secondary small mb-3">
+        <span class="spinner-border spinner-border-sm me-1"></span> Loading hourly forecast…
+    </div>
+}
+else if (hourlyDisplay.Count > 0)
+{
+    <div class="mb-4 p-3 rounded" style="background:#111; border:1px solid #2d2d2d;">
+        <div class="wx-hourly-header">
+            <span class="fw-semibold">⏱️ Hourly — @selectedHourlyDate!.Value.ToString("dddd, MMM d")</span>
+            <button class="btn btn-sm btn-outline-secondary" @onclick="CloseHourlyView">✕ Close</button>
+        </div>
+        <div class="wx-hourly-scroll">
+            @foreach (var h in hourlyDisplay)
+            {
+                <div class="wx-hour-card @h.CssClass">
+                    <div class="wx-hour-time">@h.Label</div>
+                    <div class="wx-hour-emoji">@h.Emoji</div>
+                    <div class="wx-hour-temp">@((int)h.Temp)°</div>
+                    <div class="wx-hour-feels">feels @((int)h.FeelsLike)°</div>
+                    <div class="wx-hour-meta">
+                        💧@h.PrecipPct%<br />💨@((int)h.Wind) mph
+                    </div>
+                    @if (h.IsMtbHour)
+                    {
+                        <div class="wx-mtb-badge" title="Good riding hour">🚵</div>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@* ── 10-day calendar ── *@
+@if (calendarDays.Count > 0)
+{
+    <div class="wx-cal-grid mb-2">
+        <div class="wx-cal-header">Sun</div>
+        <div class="wx-cal-header">Mon</div>
+        <div class="wx-cal-header">Tue</div>
+        <div class="wx-cal-header">Wed</div>
+        <div class="wx-cal-header">Thu</div>
+        <div class="wx-cal-header">Fri</div>
+        <div class="wx-cal-header">Sat</div>
+
+        @foreach (var day in calendarDays)
+        {
+            <div class="@day.CellCss" @onclick="() => OnCalendarDayClick(day.Date)">
+                <div class="wx-cal-date">@day.Date.ToString("MMM d")</div>
+                @if (day.Forecast != null)
+                {
+                    <div class="wx-cal-emoji">@day.Emoji</div>
+                    <div class="wx-cal-desc">@day.WeatherDesc</div>
+                    <div class="wx-cal-temps">
+                        @((int)day.Forecast.TempMax)°&nbsp;<span>/ @((int)day.Forecast.TempMin)°</span>
+                    </div>
+                    <div class="wx-cal-meta">
+                        💧 @day.Forecast.PrecipProbability%
+                        &nbsp;💨 @((int)day.Forecast.WindSpeedMph) mph
+                        @if (day.Forecast.PrecipitationInches > 0)
+                        {
+                            <br />@(day.Forecast.PrecipitationInches.ToString("0.00") + " in")
+                        }
+                    </div>
+                    @if (day.Forecast.IsMtbDay)
+                    {
+                        <div class="wx-mtb-badge" title="Good mountain biking conditions">🚵 Ride day</div>
+                    }
+                    @if (day.IsToday)
+                    {
+                        <div class="small text-warning mt-1" style="font-size:.6rem;">tap for hourly ▾</div>
+                    }
+                }
+            </div>
+        }
+    </div>
+}
+else if (loading)
+{
+    <div class="text-center text-secondary py-5">
+        <div class="spinner-border text-warning" role="status"></div>
+        <p class="mt-2">Loading forecast…</p>
+    </div>
+}
+
+@code {
+    // ── Granby constant ────────────────────────────────────────────────────
+    const double GranbyLat = 41.9498;
+    const double GranbyLon = -72.8390;
+
+    // ── State ──────────────────────────────────────────────────────────────
+    string cityInput = "";
+    bool loading = false;
+    bool showSearch = false;
+    string? errorMessage;
+    GeoLocation? location;
+    WeatherForecast? forecast;
+    List<CalendarDay> calendarDays = [];
+    List<SavedPlace> savedPlaces = [];
+
+    // ── Typeahead ──────────────────────────────────────────────────────────
+    List<GeoLocation> suggestions = [];
+    bool showSuggestions = false;
+    CancellationTokenSource? _suggestCts;
+
+    // ── Refresh timer ──────────────────────────────────────────────────────
+    const int RefreshIntervalSeconds = 600;
+    int secondsLeft = RefreshIntervalSeconds;
+    Timer? _timer;
+
+    // ── Hourly state ───────────────────────────────────────────────────────
+    bool hourlyLoading = false;
+    DateOnly? selectedHourlyDate;
+    List<HourDisplay> hourlyDisplay = [];
+
+    // ── Lifecycle ──────────────────────────────────────────────────────────
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        await LoadSavedPlacesFromStorage();
+        await LoadGranby();
+        _timer = new Timer(_ => InvokeAsync(TimerTick), null, 1000, 1000);
+    }
+
+    async Task TimerTick()
+    {
+        secondsLeft--;
+        if (secondsLeft <= 0)
+        {
+            secondsLeft = RefreshIntervalSeconds;
+            if (location != null) await RefreshForecast();
+        }
+        StateHasChanged();
+    }
+
+    public void Dispose()
+    {
+        _timer?.Dispose();
+        _suggestCts?.Dispose();
+    }
+
+    // ── Granby ─────────────────────────────────────────────────────────────
+    async Task LoadGranby()
+    {
+        loading = true;
+        StateHasChanged();
+        try
+        {
+            await ApplyLocation(new GeoLocation
+            {
+                Name = "Granby", Region = "Connecticut", Country = "US",
+                Latitude = GranbyLat, Longitude = GranbyLon,
+            });
+        }
+        finally { loading = false; StateHasChanged(); }
+    }
+
+    bool IsGranbyActive =>
+        location != null &&
+        Math.Abs(location.Latitude - GranbyLat) < 0.01 &&
+        Math.Abs(location.Longitude - GranbyLon) < 0.01;
+
+    // ── Calendar day click → hourly ────────────────────────────────────────
+    async Task OnCalendarDayClick(DateOnly date)
+    {
+        if (location == null) return;
+        if (date != DateOnly.FromDateTime(DateTime.Today)) return;
+
+        if (selectedHourlyDate == date) { CloseHourlyView(); return; }
+
+        hourlyLoading = true;
+        selectedHourlyDate = date;
+        hourlyDisplay = [];
+        StateHasChanged();
+
+        try
+        {
+            var hf = await Weather.GetHourlyForecastAsync(location.Latitude, location.Longitude, date);
+            // Look up sunrise/sunset for this date from the daily forecast
+            var dayFc = forecast?.Days.FirstOrDefault(d => d.Date == date);
+            BuildHourlyDisplay(hf, dayFc?.Sunrise ?? default, dayFc?.Sunset ?? default);
+        }
+        finally { hourlyLoading = false; StateHasChanged(); }
+    }
+
+    void CloseHourlyView()
+    {
+        selectedHourlyDate = null;
+        hourlyDisplay = [];
+        StateHasChanged();
+    }
+
+    void BuildHourlyDisplay(HourlyForecast? hf, DateTime sunrise, DateTime sunset)
+    {
+        if (hf == null) { hourlyDisplay = []; return; }
+        var now         = DateTime.Now;
+        int currentHour = now.Hour;
+        int firstHour   = Math.Max(0, currentHour - 1);
+
+        hourlyDisplay = hf.Hours
+            .Where(h => h.Time.Hour >= firstHour)
+            .Select(h =>
+            {
+                var (emoji, _) = WeatherService.GetWeatherInfo(h.WeatherCode);
+                bool isNow  = h.Time.Hour == currentHour;
+                bool isPast = h.Time.Hour < currentHour;
+
+                // Per-hour MTB check
+                bool isMtb = IsMtbHour(h, hf.AllPrecip, sunrise, sunset);
+
+                string css = isNow  ? "wx-hour-card wx-hour-card--now"
+                           : isPast ? "wx-hour-card wx-hour-card--past"
+                           :          "wx-hour-card";
+                if (isMtb) css += " wx-hour-card--mtb";
+
+                string label = h.Time.ToString("h tt").ToLower();
+                return new HourDisplay(label, css, emoji, h.Temperature, h.ApparentTemp,
+                                       h.PrecipProbability, h.WindSpeedMph, isMtb);
+            }).ToList();
+    }
+
+    static bool IsMtbHour(HourForecast h, Dictionary<DateTime, double> allPrecip,
+                           DateTime sunrise, DateTime sunset)
+    {
+        int hr = h.Time.Hour;
+        // Must be 7am–9pm
+        if (hr < 7 || hr >= 21) return false;
+        // Must be within daylight (if sunrise/sunset known)
+        if (sunrise != default && h.Time < sunrise) return false;
+        if (sunset  != default && h.Time >= sunset) return false;
+        // Must be ≥ 50°F
+        if (h.Temperature < 50) return false;
+        // No precip this hour
+        if (h.Precipitation > 0) return false;
+        // No precip in prior 24 hours
+        var slotEnd = new DateTime(h.Time.Year, h.Time.Month, h.Time.Day, hr, 0, 0);
+        for (var t = slotEnd.AddHours(-24); t < slotEnd; t = t.AddHours(1))
+        {
+            if (allPrecip.TryGetValue(t, out double p) && p > 0) return false;
+        }
+        return true;
+    }
+
+    record HourDisplay(string Label, string CssClass, string Emoji, double Temp,
+                       double FeelsLike, int PrecipPct, double Wind, bool IsMtbHour);
+
+    // ── Typeahead ──────────────────────────────────────────────────────────
+    async Task OnTownInput(ChangeEventArgs e)
+    {
+        cityInput = e.Value?.ToString() ?? "";
+        errorMessage = null;
+
+        _suggestCts?.Cancel();
+        _suggestCts = new CancellationTokenSource();
+        var token = _suggestCts.Token;
+
+        if (cityInput.Length < 2)
+        {
+            suggestions = [];
+            showSuggestions = false;
+            StateHasChanged();
+            return;
+        }
+
+        try
+        {
+            await Task.Delay(280, token);
+            var results = await Weather.SearchUSTownsAsync(cityInput);
+            if (!token.IsCancellationRequested)
+            {
+                suggestions = results;
+                showSuggestions = results.Count > 0;
+                StateHasChanged();
+            }
+        }
+        catch (TaskCanceledException) { }
+    }
+
+    async Task SelectSuggestion(GeoLocation loc)
+    {
+        cityInput = $"{loc.Name}{(loc.Region != null ? ", " + loc.Region : "")}, {loc.Country}";
+        suggestions = [];
+        showSuggestions = false;
+        showSearch = false;
+        errorMessage = null;
+        loading = true;
+        StateHasChanged();
+        try { await ApplyLocation(loc); }
+        finally { loading = false; StateHasChanged(); }
+    }
+
+    async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") { showSearch = false; showSuggestions = false; suggestions = []; }
+        if (e.Key == "Enter" && suggestions.Count > 0) await SelectSuggestion(suggestions[0]);
+    }
+
+    void OnBlur() => Task.Delay(150).ContinueWith(_ => InvokeAsync(() =>
+    {
+        showSuggestions = false;
+        StateHasChanged();
+    }));
+
+    // ── Location / forecast ────────────────────────────────────────────────
+    async Task ApplyLocation(GeoLocation loc)
+    {
+        location = loc;
+        forecast = await Weather.GetForecastAsync(loc.Latitude, loc.Longitude);
+        calendarDays = BuildCalendar();
+        hourlyDisplay = [];
+        selectedHourlyDate = null;
+        secondsLeft = RefreshIntervalSeconds;
+    }
+
+    async Task RefreshForecast()
+    {
+        if (location == null) return;
+        loading = true;
+        StateHasChanged();
+        try
+        {
+            forecast = await Weather.GetForecastAsync(location.Latitude, location.Longitude);
+            calendarDays = BuildCalendar();
+        }
+        finally { loading = false; StateHasChanged(); }
+    }
+
+    async Task ManualRefresh()
+    {
+        secondsLeft = RefreshIntervalSeconds;
+        await RefreshForecast();
+    }
+
+    // ── Saved places ───────────────────────────────────────────────────────
+    const string StorageKey = "isItNiceOut_savedPlaces";
+
+    async Task LoadSavedPlacesFromStorage()
+    {
+        var json = await JS.InvokeAsync<string?>("localStorageGet", StorageKey);
+        if (!string.IsNullOrEmpty(json))
+        {
+            try { savedPlaces = System.Text.Json.JsonSerializer.Deserialize<List<SavedPlace>>(json) ?? []; }
+            catch { savedPlaces = []; }
+        }
+        StateHasChanged();
+    }
+
+    async Task PersistSavedPlaces()
+    {
+        var json = System.Text.Json.JsonSerializer.Serialize(savedPlaces);
+        await JS.InvokeVoidAsync("localStorageSet", StorageKey, json);
+    }
+
+    async Task SaveCurrentPlace()
+    {
+        if (location == null || IsCurrentLocationSaved()) return;
+        savedPlaces.Add(new SavedPlace
+        {
+            DisplayName = location.Name + (location.Region != null ? $", {location.Region}" : ""),
+            Name = location.Name, Region = location.Region,
+            Country = location.Country,
+            Latitude = location.Latitude, Longitude = location.Longitude,
+        });
+        await PersistSavedPlaces();
+    }
+
+    async Task RemoveSavedPlace(SavedPlace place)
+    {
+        savedPlaces.Remove(place);
+        await PersistSavedPlaces();
+    }
+
+    async Task LoadSavedPlace(SavedPlace place)
+    {
+        var loc = new GeoLocation
+        {
+            Name = place.Name, Region = place.Region, Country = place.Country,
+            Latitude = place.Latitude, Longitude = place.Longitude,
+        };
+        loading = true;
+        StateHasChanged();
+        try { await ApplyLocation(loc); }
+        finally { loading = false; StateHasChanged(); }
+    }
+
+    bool IsCurrentLocationSaved() =>
+        IsGranbyActive ||
+        (location != null && savedPlaces.Any(p =>
+            Math.Abs(p.Latitude - location.Latitude) < 0.01 &&
+            Math.Abs(p.Longitude - location.Longitude) < 0.01));
+
+    // ── Calendar builder ───────────────────────────────────────────────────
+    record CalendarDay(DateOnly Date, bool IsToday, DayForecast? Forecast, string Emoji, string WeatherDesc, string CellCss);
+
+    List<CalendarDay> BuildCalendar()
+    {
+        if (forecast == null) return [];
+
+        var today       = DateOnly.FromDateTime(DateTime.Today);
+        var first       = forecast.Days.First().Date;
+        var last        = forecast.Days.Last().Date;
+        var startSunday = first.AddDays(-(int)first.DayOfWeek);
+        var endSaturday = last.AddDays(6 - (int)last.DayOfWeek);
+
+        var byDate = forecast.Days.ToDictionary(d => d.Date);
+        var days   = new List<CalendarDay>();
+        var cursor = startSunday;
+
+        while (cursor <= endSaturday)
+        {
+            byDate.TryGetValue(cursor, out var fc);
+            var (emoji, desc) = fc != null ? WeatherService.GetWeatherInfo(fc.WeatherCode) : ("", "");
+            bool isToday = cursor == today;
+            string css = fc != null
+                ? (isToday ? "wx-cal-cell wx-cal-cell--today" : "wx-cal-cell")
+                : "wx-cal-cell wx-cal-cell--pad";
+            if (fc?.IsMtbDay == true) css += " wx-cal-cell--mtb";
+            if (isToday) css += " wx-cal-clickable";
+            days.Add(new CalendarDay(cursor, isToday, fc, emoji, desc, css));
+            cursor = cursor.AddDays(1);
+        }
+
+        return days;
+    }
+
+    // ── Helpers ────────────────────────────────────────────────────────────
+    string FormatCountdown()
+    {
+        var m = secondsLeft / 60;
+        var s = secondsLeft % 60;
+        return m > 0 ? $"{m}m {s:D2}s" : $"{s}s";
+    }
+
+    record SavedPlace
+    {
+        public string DisplayName { get; init; } = "";
+        public string Name { get; init; } = "";
+        public string? Region { get; init; }
+        public string Country { get; init; } = "";
+        public double Latitude { get; init; }
+        public double Longitude { get; init; }
+    }
+}

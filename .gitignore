@@ -1,0 +1,24 @@
+## .NET / ASP.NET Core
+bin/
+obj/
+*.user
+*.suo
+.vs/
+*.swp
+*.sln.docstates
+
+## SQLite runtime files (generated at startup)
+*.db
+*.db-shm
+*.db-wal
+
+## User secrets & local config
+appsettings.Development.json
+secrets.json
+
+## Claude Code local settings
+.claude/
+
+## OS noise
+.DS_Store
+Thumbs.db

@@ -1,0 +1,17 @@
+@inherits LayoutComponentBase
+
+<nav class="navbar navbar-dark bg-dark border-bottom border-secondary mb-3">
+    <div class="container-fluid">
+        <a class="navbar-brand fw-bold text-warning" href="/">🌤️ Is It Nice Out?</a>
+        <ul class="nav nav-tabs border-0">
+            <li class="nav-item">
+                <NavLink class="nav-link" href="/" Match="NavLinkMatch.All">Home</NavLink>
+            </li>
+            <!-- TODO: Add nav links here -->
+        </ul>
+    </div>
+</nav>
+
+<div class="container py-2">
+    @Body
+</div>

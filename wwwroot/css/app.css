@@ -1,0 +1,267 @@
+/* =========================================================
+   Base
+   ========================================================= */
+
+html, body {
+    min-height: 100vh;
+    background-color: #111;
+}
+
+/* =========================================================
+   Navigation
+   ========================================================= */
+
+.nav-tabs .nav-link {
+    color: #aaa;
+    border: none;
+    border-bottom: 2px solid transparent;
+    transition: color 0.15s, border-color 0.15s;
+}
+
+.nav-tabs .nav-link:hover {
+    color: #fff;
+    border-bottom-color: #555;
+}
+
+.nav-tabs .nav-link.active {
+    color: #ffc107;
+    background: transparent;
+    border-bottom: 2px solid #ffc107;
+}
+
+/* =========================================================
+   Cards & List Items
+   ========================================================= */
+
+.list-group-item {
+    transition: background-color 0.15s;
+}
+
+.list-group-item:hover {
+    background-color: rgba(255, 255, 255, 0.03);
+}
+
+/* =========================================================
+   Forms
+   ========================================================= */
+
+.form-control:focus,
+.form-select:focus {
+    border-color: #ffc107;
+    box-shadow: 0 0 0 0.2rem rgba(255, 193, 7, 0.25);
+}
+
+.btn-warning {
+    color: #111;
+}
+
+/* =========================================================
+   Weather Calendar
+   ========================================================= */
+
+.wx-cal-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 4px;
+}
+
+.wx-cal-header {
+    text-align: center;
+    padding: 6px 2px;
+    font-size: .7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: #777;
+}
+
+.wx-cal-cell {
+    min-height: 150px;
+    border: 1px solid #2d2d2d;
+    border-radius: 6px;
+    padding: 8px 6px 6px;
+    background: #161616;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.wx-cal-cell--today {
+    border-color: #ffc107 !important;
+    background: #1c1900;
+}
+
+.wx-cal-clickable {
+    cursor: pointer;
+}
+
+.wx-cal-clickable:hover {
+    border-color: #ffc107 !important;
+    background: #1c1900;
+}
+
+.wx-cal-cell--pad {
+    background: #0e0e0e;
+    border-color: #1e1e1e;
+    opacity: .45;
+    min-height: 150px;
+}
+
+.wx-cal-date {
+    font-size: .72rem;
+    font-weight: 600;
+    color: #888;
+    line-height: 1;
+}
+
+.wx-cal-cell--today .wx-cal-date {
+    color: #ffc107;
+}
+
+.wx-cal-emoji {
+    font-size: 2rem;
+    line-height: 1.1;
+    margin: 2px 0;
+}
+
+.wx-cal-desc {
+    font-size: .65rem;
+    color: #666;
+    line-height: 1.2;
+}
+
+.wx-cal-temps {
+    font-size: .85rem;
+    font-weight: 700;
+    color: #ddd;
+    line-height: 1;
+}
+
+.wx-cal-temps span {
+    font-weight: 400;
+    color: #666;
+    font-size: .78rem;
+}
+
+.wx-cal-meta {
+    font-size: .68rem;
+    color: #666;
+    line-height: 1.4;
+    margin-top: auto;
+}
+
+/* =========================================================
+   Hourly Strip
+   ========================================================= */
+
+.wx-hourly-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: .5rem;
+}
+
+.wx-hourly-scroll {
+    display: flex;
+    gap: 6px;
+    width: 100%;
+}
+
+.wx-hour-card {
+    flex: 1 1 0;
+    min-width: 0;
+    background: #161616;
+    border: 1px solid #2d2d2d;
+    border-radius: 6px;
+    padding: 8px 4px;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    overflow: hidden;
+}
+
+.wx-hour-card--now {
+    border-color: #ffc107;
+    background: #1c1900;
+}
+
+.wx-hour-card--past {
+    opacity: .45;
+}
+
+.wx-hour-time {
+    font-size: .68rem;
+    font-weight: 600;
+    color: #888;
+    line-height: 1;
+}
+
+.wx-hour-card--now .wx-hour-time {
+    color: #ffc107;
+}
+
+.wx-hour-emoji {
+    font-size: 1.5rem;
+    line-height: 1.2;
+}
+
+.wx-hour-temp {
+    font-size: .9rem;
+    font-weight: 700;
+    color: #ddd;
+}
+
+.wx-hour-feels {
+    font-size: .65rem;
+    color: #666;
+}
+
+.wx-hour-meta {
+    font-size: .63rem;
+    color: #666;
+    line-height: 1.5;
+    margin-top: auto;
+}
+
+/* ── MTB badge ── */
+.wx-mtb-badge {
+    font-size: .75rem;
+    margin-top: 4px;
+    line-height: 1;
+    opacity: .9;
+}
+
+/* ── MTB day highlight (calendar cell) ── */
+.wx-cal-cell--mtb {
+    border-color: #2d6a4f !important;
+    background: #071410;
+}
+
+.wx-cal-cell--mtb.wx-cal-cell--today {
+    border-color: #ffc107 !important; /* today always wins */
+    background: #1c1900;
+}
+
+/* ── MTB hour highlight (hour card) ── */
+.wx-hour-card--mtb {
+    border-color: #2d6a4f !important;
+    background: #071410;
+}
+
+.wx-hour-card--mtb.wx-hour-card--now {
+    border-color: #ffc107 !important;
+    background: #1c1900;
+}
+
+/* =========================================================
+   Utilities
+   ========================================================= */
+
+.text-amber {
+    color: #ffc107;
+}
+
+.border-amber {
+    border-color: #ffc107 !important;
+}
