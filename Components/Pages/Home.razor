@@ -8,6 +8,13 @@
 
 @* ── Saved places + search toggle ── *@
 <div class="mb-3 d-flex flex-wrap gap-2 align-items-center">
+    @if (location != null)
+    {
+        <div class="badge rounded-pill d-flex align-items-center px-2 py-2"
+             style="background:#2a2a2a; border:1px solid @(showMtb ? "#4ade80" : "#333"); cursor:pointer; font-size:.9rem; color:@(showMtb ? "#4ade80" : "#444");"
+             title="@(showMtb ? "Hide MTB highlights" : "Show MTB highlights")"
+             @onclick="() => ToggleMtb(location.Latitude, location.Longitude)">🚲</div>
+    }
     <span class="text-secondary small">Saved:</span>
 
     <div class="badge rounded-pill d-flex align-items-center gap-1 px-3 py-2"
@@ -22,7 +29,7 @@
              style="background:#2a2a2a; border:1px solid #444; cursor:pointer; font-size:.85rem;"
              @onclick="() => LoadSavedPlace(place)">
             <span>📍 @place.DisplayName</span>
-            <span class="ms-2 text-secondary"
+            <span class="ms-1 text-secondary"
                   style="cursor:pointer; font-size:.75rem; line-height:1;"
                   @onclick:stopPropagation
                   @onclick="() => RemoveSavedPlace(place)">✕</span>
@@ -93,12 +100,9 @@
             <span class="text-warning small">★ Saved</span>
         }
 
-        <div class="ms-auto d-flex align-items-center gap-2">
-            <span class="text-secondary small" title="Next auto-refresh">
-                ↻ @FormatCountdown()
-            </span>
+        <div class="ms-auto">
             <button class="btn btn-sm btn-outline-secondary" @onclick="ManualRefresh" disabled="@loading" title="Refresh now">
-                ↺
+                ↺ @FormatCountdown()
             </button>
         </div>
     </div>
@@ -127,19 +131,57 @@ else if (hourlyDisplay.Count > 0)
             @foreach (var h in hourlyDisplay)
             {
                 <div class="wx-hour-card @h.CssClass">
+                    <div class="wx-hour-bars">
+                        <div class="wx-cal-bar-track">
+                            <div class="wx-cal-bar-fill wx-cal-bar-fill--temp" style="height:@(h.TempBarPct)%"></div>
+                        </div>
+                        <div class="wx-rain-drops">
+                            @for (int i = 0; i < 20; i++)
+                            {
+                                <div class="wx-rain-drop @(i < h.RainDropCount ? "wx-rain-drop--on" : "wx-rain-drop--off")"></div>
+                            }
+                        </div>
+                    </div>
+                    @if (h.IsMtbHour && showMtb)
+                    {
+                        <div class="wx-mtb-dot" title="Good riding hour"></div>
+                    }
                     <div class="wx-hour-time">@h.Label</div>
                     <div class="wx-hour-emoji">@h.Emoji</div>
                     <div class="wx-hour-temp">@((int)h.Temp)°</div>
                     <div class="wx-hour-feels">feels @((int)h.FeelsLike)°</div>
                     <div class="wx-hour-meta">
-                        💧@h.PrecipPct%<br />💨@((int)h.Wind) mph
+                        💨@((int)h.Wind) mph
                     </div>
-                    @if (h.IsMtbHour)
-                    {
-                        <div class="wx-mtb-badge" title="Good riding hour">🚵</div>
-                    }
                 </div>
             }
+        </div>
+    </div>
+}
+
+@* ── Day detail popup ── *@
+@if (popupDay != null && popupDay.Forecast != null)
+{
+    <div class="wx-popup-overlay" @onclick="ClosePopup">
+        <div class="wx-popup-card" @onclick:stopPropagation="true">
+            <div class="wx-popup-header">
+                <span>@popupDay.Emoji @popupDay.Date.ToString("dddd, MMM d")</span>
+                <button class="btn btn-sm btn-outline-secondary" @onclick="ClosePopup">✕</button>
+            </div>
+            <div class="wx-popup-body">
+                <div>@popupDay.WeatherDesc</div>
+                <div>🌡️ @((int)popupDay.Forecast.TempMax)° / @((int)popupDay.Forecast.TempMin)°</div>
+                <div>💧 @popupDay.Forecast.PrecipProbability%</div>
+                <div>💨 @((int)popupDay.Forecast.WindSpeedMph) mph</div>
+                @if (popupDay.Forecast.PrecipitationInches > 0)
+                {
+                    <div>🌧️ @(popupDay.Forecast.PrecipitationInches.ToString("0.00") + " in")</div>
+                }
+                @if (popupDay.Forecast.IsMtbDay)
+                {
+                    <div class="wx-mtb-badge">🚵 Ride day!</div>
+                }
+            </div>
         </div>
     </div>
 }
@@ -162,27 +204,33 @@ else if (hourlyDisplay.Count > 0)
                 <div class="wx-cal-date">@day.Date.ToString("MMM d")</div>
                 @if (day.Forecast != null)
                 {
+                    @if (day.Forecast.IsMtbDay && showMtb)
+                    {
+                        <div class="wx-mtb-dot" title="Good mountain biking conditions"></div>
+                    }
+                    <div class="wx-cal-bars-right">
+                        <div class="wx-rain-drops">
+                            @for (int i = 0; i < 20; i++)
+                            {
+                                <div class="wx-rain-drop @(i < day.RainDropCount ? "wx-rain-drop--on" : "wx-rain-drop--off")"></div>
+                            }
+                        </div>
+                        <div class="wx-cal-bar-track">
+                            <div class="wx-cal-freeze-line" style="bottom:@(freezeLinePct)%"></div>
+                            <div class="wx-cal-bar-fill wx-cal-bar-fill--temp @(day.TempIcy ? "wx-cal-bar-fill--icy" : "")" style="height:@(day.TempBarPct)%"></div>
+                        </div>
+                        <div class="wx-cal-bar-track">
+                            <div class="wx-cal-freeze-line" style="bottom:@(freezeLinePct)%"></div>
+                            <div class="wx-cal-bar-fill wx-cal-bar-fill--night @(day.NightIcy ? "wx-cal-bar-fill--icy" : "")" style="height:@(day.NightBarPct)%"></div>
+                        </div>
+                    </div>
                     <div class="wx-cal-emoji">@day.Emoji</div>
-                    <div class="wx-cal-desc">@day.WeatherDesc</div>
-                    <div class="wx-cal-temps">
-                        @((int)day.Forecast.TempMax)°&nbsp;<span>/ @((int)day.Forecast.TempMin)°</span>
+                    <div class="wx-cal-bottom">
+                        <div class="wx-cal-desc">@day.WeatherDesc</div>
+                        <div class="wx-cal-temps">
+                            @((int)day.Forecast.TempMax)°&nbsp;<span>/ @((int)day.Forecast.TempMin)°</span>
+                        </div>
                     </div>
-                    <div class="wx-cal-meta">
-                        💧 @day.Forecast.PrecipProbability%
-                        &nbsp;💨 @((int)day.Forecast.WindSpeedMph) mph
-                        @if (day.Forecast.PrecipitationInches > 0)
-                        {
-                            <br />@(day.Forecast.PrecipitationInches.ToString("0.00") + " in")
-                        }
-                    </div>
-                    @if (day.Forecast.IsMtbDay)
-                    {
-                        <div class="wx-mtb-badge" title="Good mountain biking conditions">🚵 Ride day</div>
-                    }
-                    @if (day.IsToday)
-                    {
-                        <div class="small text-warning mt-1" style="font-size:.6rem;">tap for hourly ▾</div>
-                    }
                 }
             </div>
         }
@@ -225,6 +273,19 @@ else if (loading)
     bool hourlyLoading = false;
     DateOnly? selectedHourlyDate;
     List<HourDisplay> hourlyDisplay = [];
+
+    // ── Day detail popup ───────────────────────────────────────────────────
+    CalendarDay? popupDay;
+
+    // ── Freeze line (shared bar scale) ─────────────────────────────────────
+    int freezeLinePct = 0;
+
+    // ── MTB preferences (per location) ────────────────────────────────────
+    Dictionary<string, bool> mtbPrefs = new();
+    bool showMtb = false;
+    const string MtbPrefsKey = "isItNiceOut_mtbPrefs";
+
+    string MtbKey(double lat, double lon) => $"{lat:F4},{lon:F4}";
 
     // ── Lifecycle ──────────────────────────────────────────────────────────
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -273,12 +334,24 @@ else if (loading)
         Math.Abs(location.Latitude - GranbyLat) < 0.01 &&
         Math.Abs(location.Longitude - GranbyLon) < 0.01;
 
-    // ── Calendar day click → hourly ────────────────────────────────────────
+    // ── Calendar day click ─────────────────────────────────────────────────
     async Task OnCalendarDayClick(DateOnly date)
     {
         if (location == null) return;
-        if (date != DateOnly.FromDateTime(DateTime.Today)) return;
 
+        bool isToday = date == DateOnly.FromDateTime(DateTime.Today);
+
+        if (!isToday)
+        {
+            // Toggle popup for non-today days
+            var calDay = calendarDays.FirstOrDefault(d => d.Date == date);
+            if (calDay?.Forecast == null) return;
+            popupDay = popupDay?.Date == date ? null : calDay;
+            StateHasChanged();
+            return;
+        }
+
+        // Today → show hourly
         if (selectedHourlyDate == date) { CloseHourlyView(); return; }
 
         hourlyLoading = true;
@@ -289,11 +362,16 @@ else if (loading)
         try
         {
             var hf = await Weather.GetHourlyForecastAsync(location.Latitude, location.Longitude, date);
-            // Look up sunrise/sunset for this date from the daily forecast
             var dayFc = forecast?.Days.FirstOrDefault(d => d.Date == date);
             BuildHourlyDisplay(hf, dayFc?.Sunrise ?? default, dayFc?.Sunset ?? default);
         }
         finally { hourlyLoading = false; StateHasChanged(); }
+    }
+
+    void ClosePopup()
+    {
+        popupDay = null;
+        StateHasChanged();
     }
 
     void CloseHourlyView()
@@ -310,6 +388,10 @@ else if (loading)
         int currentHour = now.Hour;
         int firstHour   = Math.Max(0, currentHour - 1);
 
+        // Fixed temp scale: -20°F to 120°F
+        const double HTempMin   = -20.0;
+        const double HTempRange = 140.0;
+
         hourlyDisplay = hf.Hours
             .Where(h => h.Time.Hour >= firstHour)
             .Select(h =>
@@ -318,17 +400,20 @@ else if (loading)
                 bool isNow  = h.Time.Hour == currentHour;
                 bool isPast = h.Time.Hour < currentHour;
 
-                // Per-hour MTB check
                 bool isMtb = IsMtbHour(h, hf.AllPrecip, sunrise, sunset);
 
                 string css = isNow  ? "wx-hour-card wx-hour-card--now"
                            : isPast ? "wx-hour-card wx-hour-card--past"
                            :          "wx-hour-card";
-                if (isMtb) css += " wx-hour-card--mtb";
+                if (isMtb && showMtb) css += " wx-hour-card--mtb";
+
+                int tempBarPct = Math.Clamp((int)Math.Round((h.Temperature - HTempMin) / HTempRange * 100), 0, 100);
+                int rainDrops = Math.Clamp((int)Math.Round(h.PrecipProbability / 5.0), 0, 20);
 
                 string label = h.Time.ToString("h tt").ToLower();
                 return new HourDisplay(label, css, emoji, h.Temperature, h.ApparentTemp,
-                                       h.PrecipProbability, h.WindSpeedMph, isMtb);
+                                       h.PrecipProbability, h.WindSpeedMph, isMtb,
+                                       tempBarPct, rainDrops);
             }).ToList();
     }
 
@@ -355,7 +440,8 @@ else if (loading)
     }
 
     record HourDisplay(string Label, string CssClass, string Emoji, double Temp,
-                       double FeelsLike, int PrecipPct, double Wind, bool IsMtbHour);
+                       double FeelsLike, int PrecipPct, double Wind, bool IsMtbHour,
+                       int TempBarPct, int RainDropCount);
 
     // ── Typeahead ──────────────────────────────────────────────────────────
     async Task OnTownInput(ChangeEventArgs e)
@@ -418,6 +504,7 @@ else if (loading)
     async Task ApplyLocation(GeoLocation loc)
     {
         location = loc;
+        showMtb = mtbPrefs.GetValueOrDefault(MtbKey(loc.Latitude, loc.Longitude), false);
         forecast = await Weather.GetForecastAsync(loc.Latitude, loc.Longitude);
         calendarDays = BuildCalendar();
         hourlyDisplay = [];
@@ -455,6 +542,14 @@ else if (loading)
             try { savedPlaces = System.Text.Json.JsonSerializer.Deserialize<List<SavedPlace>>(json) ?? []; }
             catch { savedPlaces = []; }
         }
+
+        var mtbJson = await JS.InvokeAsync<string?>("localStorageGet", MtbPrefsKey);
+        if (!string.IsNullOrEmpty(mtbJson))
+        {
+            try { mtbPrefs = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, bool>>(mtbJson) ?? new(); }
+            catch { mtbPrefs = new(); }
+        }
+
         StateHasChanged();
     }
 
@@ -463,6 +558,26 @@ else if (loading)
         var json = System.Text.Json.JsonSerializer.Serialize(savedPlaces);
         await JS.InvokeVoidAsync("localStorageSet", StorageKey, json);
     }
+
+    async Task ToggleMtb(double lat, double lon)
+    {
+        var key = MtbKey(lat, lon);
+        mtbPrefs[key] = !mtbPrefs.GetValueOrDefault(key, false);
+        // If this is the currently displayed location, apply immediately
+        if (location != null &&
+            Math.Abs(location.Latitude - lat) < 0.01 &&
+            Math.Abs(location.Longitude - lon) < 0.01)
+        {
+            showMtb = mtbPrefs[key];
+            calendarDays = BuildCalendar();
+        }
+        var json = System.Text.Json.JsonSerializer.Serialize(mtbPrefs);
+        await JS.InvokeVoidAsync("localStorageSet", MtbPrefsKey, json);
+        StateHasChanged();
+    }
+
+    bool MtbOnFor(double lat, double lon) =>
+        mtbPrefs.GetValueOrDefault(MtbKey(lat, lon), false);
 
     async Task SaveCurrentPlace()
     {
@@ -503,7 +618,10 @@ else if (loading)
             Math.Abs(p.Longitude - location.Longitude) < 0.01));
 
     // ── Calendar builder ───────────────────────────────────────────────────
-    record CalendarDay(DateOnly Date, bool IsToday, DayForecast? Forecast, string Emoji, string WeatherDesc, string CellCss);
+    record CalendarDay(DateOnly Date, bool IsToday, DayForecast? Forecast,
+                       string Emoji, string WeatherDesc, string CellCss,
+                       int TempBarPct, int NightBarPct, int RainDropCount,
+                       bool TempIcy, bool NightIcy);
 
     List<CalendarDay> BuildCalendar()
     {
@@ -514,6 +632,13 @@ else if (loading)
         var last        = forecast.Days.Last().Date;
         var startSunday = first.AddDays(-(int)first.DayOfWeek);
         var endSaturday = last.AddDays(6 - (int)last.DayOfWeek);
+
+        // Fixed temp scale: -20°F (bottom) to 120°F (top) = 140°F range
+        const double TempMin = -20.0;
+        const double TempRange = 140.0; // 120 - (-20)
+
+        // Freeze line at 32°F = (32 - (-20)) / 140 * 100 ≈ 37%
+        freezeLinePct = (int)Math.Round((32.0 - TempMin) / TempRange * 100); // 37
 
         var byDate = forecast.Days.ToDictionary(d => d.Date);
         var days   = new List<CalendarDay>();
@@ -527,9 +652,21 @@ else if (loading)
             string css = fc != null
                 ? (isToday ? "wx-cal-cell wx-cal-cell--today" : "wx-cal-cell")
                 : "wx-cal-cell wx-cal-cell--pad";
-            if (fc?.IsMtbDay == true) css += " wx-cal-cell--mtb";
-            if (isToday) css += " wx-cal-clickable";
-            days.Add(new CalendarDay(cursor, isToday, fc, emoji, desc, css));
+            if (fc?.IsMtbDay == true && showMtb) css += " wx-cal-cell--mtb";
+            if (fc != null) css += " wx-cal-clickable";
+
+            int tempPct = fc != null
+                ? Math.Clamp((int)Math.Round((fc.TempMax - TempMin) / TempRange * 100), 0, 100)
+                : 0;
+            int nightPct = fc != null
+                ? Math.Clamp((int)Math.Round((fc.TempMin - TempMin) / TempRange * 100), 0, 100)
+                : 0;
+            int rainDrops = fc != null ? Math.Clamp((int)Math.Round(fc.PrecipProbability / 5.0), 0, 20) : 0;
+            bool tempIcy  = fc != null && fc.TempMax <= 32;
+            bool nightIcy = fc != null && fc.TempMin <= 32;
+
+            days.Add(new CalendarDay(cursor, isToday, fc, emoji, desc, css,
+                                     tempPct, nightPct, rainDrops, tempIcy, nightIcy));
             cursor = cursor.AddDays(1);
         }
 

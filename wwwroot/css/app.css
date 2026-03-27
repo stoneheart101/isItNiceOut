@@ -77,13 +77,21 @@ html, body {
 
 .wx-cal-cell {
     min-height: 150px;
-    border: 1px solid #2d2d2d;
+    border: 1px solid #484848;
     border-radius: 6px;
     padding: 8px 6px 6px;
     background: #161616;
     display: flex;
     flex-direction: column;
     gap: 3px;
+    position: relative;
+    overflow: hidden;
+}
+
+/* Foreground content sits above the background emoji */
+.wx-cal-cell > *:not(.wx-cal-emoji):not(.wx-cal-bars-left):not(.wx-cal-bars-right):not(.wx-mtb-dot) {
+    position: relative;
+    z-index: 1;
 }
 
 .wx-cal-cell--today {
@@ -119,9 +127,31 @@ html, body {
 }
 
 .wx-cal-emoji {
-    font-size: 2rem;
-    line-height: 1.1;
-    margin: 2px 0;
+    position: absolute;
+    font-size: 5rem;
+    line-height: 1;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    opacity: 0.85;
+    pointer-events: none;
+    user-select: none;
+    z-index: 0;
+}
+
+/* MTB ride-day dot — top center of cell */
+.wx-mtb-dot {
+    position: absolute;
+    top: 5px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #4ade80;
+    box-shadow: 0 0 5px rgba(74, 222, 128, 0.7);
+    z-index: 3;
+    pointer-events: none;
 }
 
 .wx-cal-desc {
@@ -147,7 +177,144 @@ html, body {
     font-size: .68rem;
     color: #666;
     line-height: 1.4;
+}
+
+/* ── Temp bars (left) / Rain bar (right) ── */
+.wx-cal-bars-left {
+    position: absolute;
+    left: 3px;
+    top: 6px;
+    bottom: 6px;
+    display: flex;
+    gap: 2px;
+    align-items: flex-end;
+    z-index: 2;
+}
+
+.wx-cal-bars-right {
+    position: absolute;
+    right: 3px;
+    top: 6px;
+    bottom: 6px;
+    display: flex;
+    gap: 2px;
+    align-items: flex-end;
+    z-index: 2;
+}
+
+.wx-cal-bar-track {
+    width: 4px;
+    height: 100%;
+    background: rgba(255,255,255,0.06);
+    border-radius: 2px;
+    display: flex;
+    align-items: flex-end;
+    position: relative;
+}
+
+.wx-cal-bar-fill {
+    width: 100%;
+    border-radius: 2px;
+    min-height: 3px;
+    transition: height 0.4s ease;
+}
+
+.wx-cal-bar-fill--temp {
+    background: linear-gradient(to top, #f97316, #fbbf24);
+}
+
+/* rain bar gradient kept for any legacy use */
+.wx-cal-bar-fill--rain {
+    background: linear-gradient(to top, #3b82f6, #93c5fd);
+}
+
+/* ── Rain drop column ── */
+.wx-rain-drops {
+    width: 5px;
+    height: 100%;
+    display: flex;
+    flex-direction: column-reverse; /* index 0 = bottom */
+    gap: 1px;
+    align-items: center;
+}
+
+.wx-rain-drop {
+    width: 4px;
+    flex: 1 1 0;
+    border-radius: 40% 40% 50% 50%;
+    min-height: 0;
+}
+
+.wx-rain-drop--on  { background: #60a5fa; }
+.wx-rain-drop--off { background: rgba(255,255,255,0.07); }
+
+.wx-cal-bar-fill--night {
+    background: linear-gradient(to top, #7c3aed, #a78bfa);
+}
+
+.wx-cal-bar-fill--icy {
+    background: linear-gradient(to top, #93c5fd, #e0f2fe) !important;
+}
+
+/* Freeze-line marker (32°F level) inside a bar track */
+.wx-cal-freeze-line {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: rgba(147, 197, 253, 0.55);
+    pointer-events: none;
+    z-index: 3;
+}
+
+/* Spacer pushes desc + temps to bottom of cell */
+.wx-cal-bottom {
     margin-top: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+/* =========================================================
+   Day Detail Popup
+   ========================================================= */
+
+.wx-popup-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.65);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.wx-popup-card {
+    background: #1a1a1a;
+    border: 1px solid #444;
+    border-radius: 10px;
+    padding: 1.25rem 1.5rem;
+    min-width: 240px;
+    max-width: 320px;
+    width: 90%;
+}
+
+.wx-popup-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: .85rem;
+    font-size: 1rem;
+    font-weight: 600;
+    color: #eee;
+}
+
+.wx-popup-body {
+    display: flex;
+    flex-direction: column;
+    gap: .5rem;
+    font-size: .9rem;
+    color: #ccc;
 }
 
 /* =========================================================
@@ -179,6 +346,14 @@ html, body {
     flex-direction: column;
     gap: 3px;
     overflow: hidden;
+    position: relative;
+}
+
+/* MTB dot inside hour card sits inline at top of flow */
+.wx-hour-card .wx-mtb-dot {
+    position: static;
+    transform: none;
+    margin: 0 auto 0;
 }
 
 .wx-hour-card--now {
@@ -224,34 +399,50 @@ html, body {
     margin-top: auto;
 }
 
+/* ── Hourly bars (temp + rain drops, right side of each hour card) ── */
+.wx-hour-bars {
+    position: absolute;
+    right: 3px;
+    top: 6px;
+    bottom: 6px;
+    display: flex;
+    gap: 2px;
+    align-items: flex-end;
+    z-index: 1;
+}
+
 /* ── MTB badge ── */
 .wx-mtb-badge {
     font-size: .75rem;
     margin-top: 4px;
     line-height: 1;
-    opacity: .9;
+    color: #4ade80;
 }
 
 /* ── MTB day highlight (calendar cell) ── */
 .wx-cal-cell--mtb {
-    border-color: #2d6a4f !important;
-    background: #071410;
+    border-color: #4ade80 !important;
+    background: linear-gradient(160deg, #0b2416 0%, #0f2e1c 100%);
+    box-shadow: 0 0 0 1px rgba(74, 222, 128, 0.15), inset 0 0 24px rgba(74, 222, 128, 0.04);
 }
 
 .wx-cal-cell--mtb.wx-cal-cell--today {
-    border-color: #ffc107 !important; /* today always wins */
+    border-color: #ffc107 !important;
     background: #1c1900;
+    box-shadow: none;
 }
 
 /* ── MTB hour highlight (hour card) ── */
 .wx-hour-card--mtb {
-    border-color: #2d6a4f !important;
-    background: #071410;
+    border-color: #4ade80 !important;
+    background: linear-gradient(160deg, #0b2416 0%, #0f2e1c 100%);
+    box-shadow: 0 0 0 1px rgba(74, 222, 128, 0.12);
 }
 
 .wx-hour-card--mtb.wx-hour-card--now {
     border-color: #ffc107 !important;
     background: #1c1900;
+    box-shadow: none;
 }
 
 /* =========================================================
