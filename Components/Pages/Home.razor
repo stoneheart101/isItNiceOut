@@ -6,14 +6,16 @@
 
 <PageTitle>Is It Nice Out?</PageTitle>
 
-@* ── Saved places + search toggle ── *@
+@* ── Saved places ── *@
 <div class="mb-3 d-flex flex-wrap gap-2 align-items-center">
-    <div class="badge rounded-pill d-flex align-items-center gap-1 px-3 py-2"
-         style="background:#2a2a2a; border:1px solid @(IsGranbyActive ? "#ffc107" : "#444"); cursor:pointer; font-size:.85rem;"
-         @onclick="LoadGranby">
-        Granby, CT
-    </div>
-
+    @if (location != null)
+    {
+        <div class="badge rounded-pill d-flex align-items-center gap-1 px-3 py-2"
+             style="background:#2a2a2a; border:1px solid #444; cursor:pointer; font-size:.85rem;"
+             @onclick='() => OpenIndicatorsModal(location.Latitude, location.Longitude, location.Name + (location.Region != null ? ", " + location.Region : ""))'>
+            Settings
+        </div>
+    }
     @foreach (var place in savedPlaces)
     {
         <div class="badge rounded-pill d-flex align-items-center gap-1 px-3 py-2"
@@ -22,7 +24,6 @@
             <span>@place.DisplayName</span>
         </div>
     }
-
 </div>
 
 @* ── Add location modal ── *@
@@ -71,17 +72,6 @@
     <div class="alert alert-danger">@errorMessage</div>
 }
 
-@* ── Unsaved current location pill (only when not already pinned) ── *@
-@if (location != null && !IsCurrentLocationSaved())
-{
-    <div class="mb-3 d-flex flex-wrap gap-2 align-items-center">
-        <div class="badge rounded-pill d-flex align-items-center gap-1 px-3 py-2"
-             style="background:#2a2a2a; border:1px solid #ffc107; font-size:.85rem;">
-            <span>@location.Name@(location.Region != null ? $", {location.Region}" : "")</span>
-            <span class="ms-1" style="cursor:pointer; color:#ffc107; font-size:.8rem;" @onclick="SaveCurrentPlace" title="Save this location">☆</span>
-        </div>
-    </div>
-}
 
 @* ── Indicators modal ── *@
 @if (showIndicatorsModal)
@@ -117,31 +107,26 @@
     </div>
 }
 
-@* ── Floating action buttons (bottom-right stack) ── *@
-<div class="wx-fab-group">
-    <div class="wx-fab-sm" @onclick="() => showLocationModal = true" title="Add location">+</div>
-    @if (location != null)
-    {
-        <div class="wx-fab-sm" title="Location settings"
-             @onclick='() => OpenIndicatorsModal(location.Latitude, location.Longitude, location.Name + (location.Region != null ? ", " + location.Region : ""))'>⚙</div>
-    }
-    <div class="wx-fab" @onclick="ManualRefresh" title="@(loading ? "Loading…" : "Refresh now")"
+@* ── Top-right action buttons ── *@
+<div class="wx-topbar">
+    <div class="wx-topbar-btn" @onclick="() => showLocationModal = true" title="Add location">+</div>
+    <div class="wx-topbar-btn" @onclick="ManualRefresh" title="@(loading ? "Loading…" : "Refresh")"
          style="@(loading ? "pointer-events:none;" : "")">
-        <svg class="wx-fab-ring" viewBox="0 0 52 52">
-            <circle class="wx-fab-ring-bg" cx="26" cy="26" r="22" />
+        <svg class="wx-topbar-ring" viewBox="0 0 30 30">
+            <circle style="fill:none;stroke:rgba(255,255,255,0.08);stroke-width:2;" cx="15" cy="15" r="11" />
             @if (!loading)
             {
-                <circle class="wx-fab-ring-fill" cx="26" cy="26" r="22"
-                        style="stroke-dashoffset:@(FabRingOffset)" />
+                <circle class="wx-topbar-ring-fill" cx="15" cy="15" r="11"
+                        style="stroke-dashoffset:@(TopbarRingOffset)" />
             }
         </svg>
         @if (loading)
         {
-            <span class="spinner-border text-warning wx-fab-spinner" role="status"></span>
+            <span class="spinner-border spinner-border-sm text-warning" style="width:.75rem;height:.75rem;border-width:2px;" role="status"></span>
         }
         else
         {
-            <span class="wx-fab-icon">↺</span>
+            <span style="position:relative;z-index:1;color:#888;font-size:.85rem;line-height:1;">↺</span>
         }
     </div>
 </div>
@@ -156,10 +141,6 @@
 else if (hourlyDisplay.Count > 0)
 {
     <div class="mb-4 p-3 rounded" style="background:#111; border:1px solid #2d2d2d;">
-        <div class="wx-hourly-header">
-            <span class="fw-semibold">⏱️ Hourly — @selectedHourlyDate!.Value.ToString("dddd, MMM d")</span>
-            <button class="btn btn-sm btn-outline-secondary" @onclick="CloseHourlyView">✕ Close</button>
-        </div>
         <div class="wx-hourly-scroll">
             @foreach (var h in hourlyDisplay)
             {
@@ -184,7 +165,7 @@ else if (hourlyDisplay.Count > 0)
                     <div class="wx-hour-temp">@((int)h.Temp)°</div>
                     <div class="wx-hour-feels">feels @((int)h.FeelsLike)°</div>
                     <div class="wx-hour-meta">
-                        💨@((int)h.Wind) mph
+                        @((int)h.Wind) mph
                     </div>
                 </div>
             }
@@ -269,19 +250,28 @@ else if (hourlyDisplay.Count > 0)
         }
     </div>
 }
-else
+else if (loading)
 {
     <div class="text-center text-secondary py-5">
         <div class="spinner-border text-warning" role="status"></div>
         <p class="mt-2 small">Loading forecast…</p>
     </div>
 }
+else
+{
+    <div class="text-center text-secondary py-5">
+        <p class="small">Add a location to get started.</p>
+    </div>
+}
+
+@if (dailyDataCount > 0 || hourlyDataCount > 0)
+{
+    <div class="text-center mt-1 mb-3" style="font-size:.6rem; color:#333;">
+        @dailyDataCount days · @hourlyDataCount hours
+    </div>
+}
 
 @code {
-    // ── Granby constant ────────────────────────────────────────────────────
-    const double GranbyLat = 41.9498;
-    const double GranbyLon = -72.8390;
-
     // ── State ──────────────────────────────────────────────────────────────
     string cityInput = "";
     bool loading = false;
@@ -312,8 +302,11 @@ else
 
     // ── Hourly state ───────────────────────────────────────────────────────
     bool hourlyLoading = false;
-    DateOnly? selectedHourlyDate;
     List<HourDisplay> hourlyDisplay = [];
+
+    // ── Data counts (for footer) ───────────────────────────────────────────
+    int dailyDataCount = 0;
+    int hourlyDataCount = 0;
 
     // ── Day detail popup ───────────────────────────────────────────────────
     CalendarDay? popupDay;
@@ -358,7 +351,8 @@ else
     {
         if (!firstRender) return;
         await LoadSavedPlacesFromStorage();
-        await LoadGranby();
+        if (savedPlaces.Count > 0)
+            await LoadSavedPlace(savedPlaces[0]);
         _timer = new Timer(_ => InvokeAsync(TimerTick), null, 1000, 1000);
     }
 
@@ -379,59 +373,14 @@ else
         _suggestCts?.Dispose();
     }
 
-    // ── Granby ─────────────────────────────────────────────────────────────
-    async Task LoadGranby()
-    {
-        loading = true;
-        StateHasChanged();
-        try
-        {
-            await ApplyLocation(new GeoLocation
-            {
-                Name = "Granby", Region = "Connecticut", Country = "US",
-                Latitude = GranbyLat, Longitude = GranbyLon,
-            });
-        }
-        finally { loading = false; StateHasChanged(); }
-    }
-
-    bool IsGranbyActive =>
-        location != null &&
-        Math.Abs(location.Latitude - GranbyLat) < 0.01 &&
-        Math.Abs(location.Longitude - GranbyLon) < 0.01;
-
     // ── Calendar day click ─────────────────────────────────────────────────
-    async Task OnCalendarDayClick(DateOnly date)
+    void OnCalendarDayClick(DateOnly date)
     {
         if (location == null) return;
-
-        bool isToday = date == DateOnly.FromDateTime(DateTime.Today);
-
-        if (!isToday)
-        {
-            // Toggle popup for non-today days
-            var calDay = calendarDays.FirstOrDefault(d => d.Date == date);
-            if (calDay?.Forecast == null) return;
-            popupDay = popupDay?.Date == date ? null : calDay;
-            StateHasChanged();
-            return;
-        }
-
-        // Today → show hourly
-        if (selectedHourlyDate == date) { CloseHourlyView(); return; }
-
-        hourlyLoading = true;
-        selectedHourlyDate = date;
-        hourlyDisplay = [];
+        var calDay = calendarDays.FirstOrDefault(d => d.Date == date);
+        if (calDay?.Forecast == null) return;
+        popupDay = popupDay?.Date == date ? null : calDay;
         StateHasChanged();
-
-        try
-        {
-            var hf = await Weather.GetHourlyForecastAsync(location.Latitude, location.Longitude, date);
-            var dayFc = forecast?.Days.FirstOrDefault(d => d.Date == date);
-            BuildHourlyDisplay(hf, dayFc?.Sunrise ?? default, dayFc?.Sunset ?? default);
-        }
-        finally { hourlyLoading = false; StateHasChanged(); }
     }
 
     void ClosePopup()
@@ -440,26 +389,20 @@ else
         StateHasChanged();
     }
 
-    void CloseHourlyView()
-    {
-        selectedHourlyDate = null;
-        hourlyDisplay = [];
-        StateHasChanged();
-    }
-
     void BuildHourlyDisplay(HourlyForecast? hf, DateTime sunrise, DateTime sunset)
     {
         if (hf == null) { hourlyDisplay = []; return; }
         var now         = DateTime.Now;
         int currentHour = now.Hour;
-        int firstHour   = Math.Max(0, currentHour - 1);
+        int firstHour = Math.Max(0, currentHour - 1);
+        int lastHour  = currentHour + 12;
 
         // Fixed temp scale: -20°F to 120°F
         const double HTempMin   = -20.0;
         const double HTempRange = 140.0;
 
         hourlyDisplay = hf.Hours
-            .Where(h => h.Time.Hour >= firstHour)
+            .Where(h => h.Time.Hour >= firstHour && h.Time.Hour <= lastHour)
             .Select(h =>
             {
                 var (emoji, _) = WeatherService.GetWeatherInfo(h.WeatherCode);
@@ -481,6 +424,7 @@ else
                                        h.PrecipProbability, h.WindSpeedMph, isMtb,
                                        tempBarPct, rainDrops);
             }).ToList();
+        hourlyDataCount = hourlyDisplay.Count;
     }
 
     static bool IsMtbHour(HourForecast h, Dictionary<DateTime, double> allPrecip,
@@ -545,6 +489,17 @@ else
     {
         CloseLocationModal();
         errorMessage = null;
+        // Save immediately unless already saved
+        if (!savedPlaces.Any(p => Math.Abs(p.Latitude - loc.Latitude) < 0.01 && Math.Abs(p.Longitude - loc.Longitude) < 0.01))
+        {
+            savedPlaces.Add(new SavedPlace
+            {
+                DisplayName = loc.Name + (loc.Region != null ? $", {loc.Region}" : ""),
+                Name = loc.Name, Region = loc.Region, Country = loc.Country,
+                Latitude = loc.Latitude, Longitude = loc.Longitude,
+            });
+            await PersistSavedPlaces();
+        }
         loading = true;
         StateHasChanged();
         try { await ApplyLocation(loc); }
@@ -570,9 +525,8 @@ else
         showMtb = mtbPrefs.GetValueOrDefault(MtbKey(loc.Latitude, loc.Longitude), false);
         forecast = await Weather.GetForecastAsync(loc.Latitude, loc.Longitude);
         calendarDays = BuildCalendar();
-        hourlyDisplay = [];
-        selectedHourlyDate = null;
         secondsLeft = RefreshIntervalSeconds;
+        await LoadTodayHourly();
     }
 
     async Task RefreshForecast()
@@ -584,8 +538,25 @@ else
         {
             forecast = await Weather.GetForecastAsync(location.Latitude, location.Longitude);
             calendarDays = BuildCalendar();
+            await LoadTodayHourly();
         }
         finally { loading = false; StateHasChanged(); }
+    }
+
+    async Task LoadTodayHourly()
+    {
+        if (location == null) return;
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        hourlyLoading = true;
+        hourlyDisplay = [];
+        StateHasChanged();
+        try
+        {
+            var hf = await Weather.GetHourlyForecastAsync(location.Latitude, location.Longitude, today);
+            var dayFc = forecast?.Days.FirstOrDefault(d => d.Date == today);
+            BuildHourlyDisplay(hf, dayFc?.Sunrise ?? default, dayFc?.Sunset ?? default);
+        }
+        finally { hourlyLoading = false; StateHasChanged(); }
     }
 
     async Task ManualRefresh()
@@ -642,25 +613,26 @@ else
     bool MtbOnFor(double lat, double lon) =>
         mtbPrefs.GetValueOrDefault(MtbKey(lat, lon), false);
 
-    async Task SaveCurrentPlace()
-    {
-        if (location == null || IsCurrentLocationSaved()) return;
-        savedPlaces.Add(new SavedPlace
-        {
-            DisplayName = location.Name + (location.Region != null ? $", {location.Region}" : ""),
-            Name = location.Name, Region = location.Region,
-            Country = location.Country,
-            Latitude = location.Latitude, Longitude = location.Longitude,
-        });
-        await PersistSavedPlaces();
-    }
-
     async Task RemoveSavedPlace(SavedPlace place)
     {
         bool wasActive = IsPlaceActive(place);
         savedPlaces.Remove(place);
         await PersistSavedPlaces();
-        if (wasActive) await LoadGranby();
+        if (wasActive)
+        {
+            if (savedPlaces.Count > 0)
+                await LoadSavedPlace(savedPlaces[0]);
+            else
+            {
+                location = null;
+                forecast = null;
+                calendarDays = [];
+                hourlyDisplay = [];
+                dailyDataCount = 0;
+                hourlyDataCount = 0;
+                StateHasChanged();
+            }
+        }
     }
 
     async Task LoadSavedPlace(SavedPlace place)
@@ -680,12 +652,6 @@ else
         location != null &&
         Math.Abs(location.Latitude - place.Latitude) < 0.01 &&
         Math.Abs(location.Longitude - place.Longitude) < 0.01;
-
-    bool IsCurrentLocationSaved() =>
-        IsGranbyActive ||
-        (location != null && savedPlaces.Any(p =>
-            Math.Abs(p.Latitude - location.Latitude) < 0.01 &&
-            Math.Abs(p.Longitude - location.Longitude) < 0.01));
 
     // ── Calendar builder ───────────────────────────────────────────────────
     record CalendarDay(DateOnly Date, bool IsToday, DayForecast? Forecast,
@@ -740,14 +706,15 @@ else
             cursor = cursor.AddDays(1);
         }
 
+        dailyDataCount = forecast.Days.Count;
         return days;
     }
 
-    // ── Refresh FAB ring ───────────────────────────────────────────────────
-    // Circumference of r=22 circle: 2π×22 ≈ 138.23
-    // Offset shrinks from 138.23 (full, just refreshed) → 0 (ring complete, about to refresh)
-    string FabRingOffset =>
-        (138.23 * (double)secondsLeft / RefreshIntervalSeconds).ToString("F1");
+    // ── Refresh ring ───────────────────────────────────────────────────────
+    // Circumference of r=11 circle: 2π×11 ≈ 69.12
+    // Offset shrinks from 69.12 (just refreshed) → 0 (about to refresh)
+    string TopbarRingOffset =>
+        (69.12 * (double)secondsLeft / RefreshIntervalSeconds).ToString("F1");
 
     // ── Helpers ────────────────────────────────────────────────────────────
     string FormatCountdown()
