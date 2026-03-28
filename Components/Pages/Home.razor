@@ -96,6 +96,17 @@
                                @onchange="async _ => await ToggleMtb(modalLat, modalLon)" />
                     </div>
                 </div>
+                <div class="wx-indicator-row mt-3">
+                    <div>
+                        <div class="fw-semibold small">Backyard camping nights</div>
+                        <div class="text-secondary" style="font-size:.75rem;">Overnight 55–65°F, no rain 24 h before or after</div>
+                    </div>
+                    <div class="form-check form-switch mb-0">
+                        <input class="form-check-input" type="checkbox" role="switch"
+                               checked="@CampingOnFor(modalLat, modalLon)"
+                               @onchange="async _ => await ToggleCamping(modalLat, modalLon)" />
+                    </div>
+                </div>
                 @if (ModalSavedPlace != null)
                 {
                     <hr class="border-secondary my-3" />
@@ -218,10 +229,16 @@ else if (hourlyDisplay.Count > 0)
                 <div class="wx-cal-date">@day.Date.ToString("MMM d")</div>
                 @if (day.Forecast != null)
                 {
-                    @if (day.Forecast.IsMtbDay && showMtb)
-                    {
-                        <div class="wx-mtb-dot" title="Good mountain biking conditions"></div>
-                    }
+                    <div class="wx-cal-indicators">
+                        @if (day.Forecast.IsMtbDay && showMtb)
+                        {
+                            <div class="wx-indicator-dot wx-indicator-dot--mtb" title="Good mountain biking conditions"></div>
+                        }
+                        @if (day.Forecast.IsCampingDay && showCamping)
+                        {
+                            <div class="wx-indicator-dot wx-indicator-dot--camping" title="Good backyard camping night"></div>
+                        }
+                    </div>
                     <div class="wx-cal-bars-right">
                         <div class="wx-rain-drops">
                             @for (int i = 0; i < 20; i++)
@@ -339,10 +356,14 @@ else
         if (place != null) await RemoveSavedPlace(place);
     }
 
-    // ── MTB preferences (per location) ────────────────────────────────────
+    // ── Indicator preferences (per location) ──────────────────────────────
     Dictionary<string, bool> mtbPrefs = new();
     bool showMtb = false;
     const string MtbPrefsKey = "isItNiceOut_mtbPrefs";
+
+    Dictionary<string, bool> campingPrefs = new();
+    bool showCamping = false;
+    const string CampingPrefsKey = "isItNiceOut_campingPrefs";
 
     string MtbKey(double lat, double lon) => $"{lat:F4},{lon:F4}";
 
@@ -414,7 +435,6 @@ else
                 string css = isNow  ? "wx-hour-card wx-hour-card--now"
                            : isPast ? "wx-hour-card wx-hour-card--past"
                            :          "wx-hour-card";
-                if (isMtb && showMtb) css += " wx-hour-card--mtb";
 
                 int tempBarPct = Math.Clamp((int)Math.Round((h.Temperature - HTempMin) / HTempRange * 100), 0, 100);
                 int rainDrops = Math.Clamp((int)Math.Round(h.PrecipProbability / 5.0), 0, 20);
@@ -523,6 +543,7 @@ else
     {
         location = loc;
         showMtb = mtbPrefs.GetValueOrDefault(MtbKey(loc.Latitude, loc.Longitude), false);
+        showCamping = campingPrefs.GetValueOrDefault(MtbKey(loc.Latitude, loc.Longitude), false);
         forecast = await Weather.GetForecastAsync(loc.Latitude, loc.Longitude);
         calendarDays = BuildCalendar();
         secondsLeft = RefreshIntervalSeconds;
@@ -584,6 +605,13 @@ else
             catch { mtbPrefs = new(); }
         }
 
+        var campJson = await JS.InvokeAsync<string?>("localStorageGet", CampingPrefsKey);
+        if (!string.IsNullOrEmpty(campJson))
+        {
+            try { campingPrefs = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, bool>>(campJson) ?? new(); }
+            catch { campingPrefs = new(); }
+        }
+
         StateHasChanged();
     }
 
@@ -612,6 +640,25 @@ else
 
     bool MtbOnFor(double lat, double lon) =>
         mtbPrefs.GetValueOrDefault(MtbKey(lat, lon), false);
+
+    async Task ToggleCamping(double lat, double lon)
+    {
+        var key = MtbKey(lat, lon);
+        campingPrefs[key] = !campingPrefs.GetValueOrDefault(key, false);
+        if (location != null &&
+            Math.Abs(location.Latitude - lat) < 0.01 &&
+            Math.Abs(location.Longitude - lon) < 0.01)
+        {
+            showCamping = campingPrefs[key];
+            calendarDays = BuildCalendar();
+        }
+        var json = System.Text.Json.JsonSerializer.Serialize(campingPrefs);
+        await JS.InvokeVoidAsync("localStorageSet", CampingPrefsKey, json);
+        StateHasChanged();
+    }
+
+    bool CampingOnFor(double lat, double lon) =>
+        campingPrefs.GetValueOrDefault(MtbKey(lat, lon), false);
 
     async Task RemoveSavedPlace(SavedPlace place)
     {
@@ -688,7 +735,6 @@ else
             string css = fc != null
                 ? (isToday ? "wx-cal-cell wx-cal-cell--today" : "wx-cal-cell")
                 : "wx-cal-cell wx-cal-cell--pad";
-            if (fc?.IsMtbDay == true && showMtb) css += " wx-cal-cell--mtb";
             if (fc != null) css += " wx-cal-clickable";
 
             int tempPct = fc != null

@@ -89,7 +89,7 @@ html, body {
 }
 
 /* Foreground content sits above the background emoji */
-.wx-cal-cell > *:not(.wx-cal-emoji):not(.wx-cal-bars-left):not(.wx-cal-bars-right):not(.wx-mtb-dot) {
+.wx-cal-cell > *:not(.wx-cal-emoji):not(.wx-cal-bars-left):not(.wx-cal-bars-right):not(.wx-cal-indicators) {
     position: relative;
     z-index: 1;
 }
@@ -139,18 +139,42 @@ html, body {
     z-index: 0;
 }
 
-/* MTB ride-day dot — top center of cell */
-.wx-mtb-dot {
+/* ── Left-side indicator column (calendar cells) ── */
+.wx-cal-indicators {
     position: absolute;
-    top: 5px;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 7px;
-    height: 7px;
+    left: 5px;
+    top: 22px; /* below the date label */
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    z-index: 3;
+    pointer-events: none;
+}
+
+.wx-indicator-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.wx-indicator-dot--mtb {
+    background: #4ade80;
+    box-shadow: 0 0 6px rgba(74, 222, 128, 0.75);
+}
+
+.wx-indicator-dot--camping {
+    background: #fb923c;
+    box-shadow: 0 0 6px rgba(251, 146, 60, 0.75);
+}
+
+/* MTB dot inside hour card — inline at top of flow */
+.wx-mtb-dot {
+    width: 8px;
+    height: 8px;
     border-radius: 50%;
     background: #4ade80;
     box-shadow: 0 0 5px rgba(74, 222, 128, 0.7);
-    z-index: 3;
     pointer-events: none;
 }
 
@@ -236,6 +260,7 @@ html, body {
     flex-direction: column-reverse; /* index 0 = bottom */
     gap: 1px;
     align-items: center;
+    margin-right: 3px;
 }
 
 .wx-rain-drop {
@@ -261,8 +286,8 @@ html, body {
     position: absolute;
     left: 0;
     right: 0;
-    height: 1px;
-    background: rgba(147, 197, 253, 0.55);
+    height: 2px;
+    background: rgba(255, 255, 255, 0.65);
     pointer-events: none;
     z-index: 3;
 }
@@ -351,9 +376,7 @@ html, body {
 
 /* MTB dot inside hour card sits inline at top of flow */
 .wx-hour-card .wx-mtb-dot {
-    position: static;
-    transform: none;
-    margin: 0 auto 0;
+    margin: 0 auto;
 }
 
 .wx-hour-card--now {
@@ -419,31 +442,6 @@ html, body {
     color: #4ade80;
 }
 
-/* ── MTB day highlight (calendar cell) ── */
-.wx-cal-cell--mtb {
-    border-color: #4ade80 !important;
-    background: linear-gradient(160deg, #0b2416 0%, #0f2e1c 100%);
-    box-shadow: 0 0 0 1px rgba(74, 222, 128, 0.15), inset 0 0 24px rgba(74, 222, 128, 0.04);
-}
-
-.wx-cal-cell--mtb.wx-cal-cell--today {
-    border-color: #ffc107 !important;
-    background: #1c1900;
-    box-shadow: none;
-}
-
-/* ── MTB hour highlight (hour card) ── */
-.wx-hour-card--mtb {
-    border-color: #4ade80 !important;
-    background: linear-gradient(160deg, #0b2416 0%, #0f2e1c 100%);
-    box-shadow: 0 0 0 1px rgba(74, 222, 128, 0.12);
-}
-
-.wx-hour-card--mtb.wx-hour-card--now {
-    border-color: #ffc107 !important;
-    background: #1c1900;
-    box-shadow: none;
-}
 
 /* =========================================================
    Indicators Modal

@@ -115,6 +115,10 @@ public class WeatherService(HttpClient http)
             days.Add(day);
         }
 
+        // Camping check needs next-day precip probability
+        for (int j = 0; j < days.Count; j++)
+            days[j].IsCampingDay = ComputeCampingDay(days[j], j + 1 < days.Count ? days[j + 1] : null, hourly);
+
         return new WeatherForecast { Days = days };
     }
 
@@ -152,6 +156,27 @@ public class WeatherService(HttpClient http)
         }
 
         return warmEnough;
+    }
+
+    // ── Camping suitability ────────────────────────────────────────────────
+    // Criteria: overnight low 55–65°F, 0% precip on camping day and next day,
+    //           no precip in the 24 hours before midnight of the camping day.
+    static bool ComputeCampingDay(DayForecast day, DayForecast? nextDay,
+                                  Dictionary<DateTime, (double Temp, double Precip)> hourly)
+    {
+        if (nextDay == null) return false;
+        if (day.TempMin < 55 || day.TempMin > 65) return false;
+        if (day.PrecipProbability > 0 || nextDay.PrecipProbability > 0) return false;
+
+        // No actual precip in the 24 h before midnight of the camping day
+        var date = day.Date;
+        var midnight = new DateTime(date.Year, date.Month, date.Day, 0, 0, 0);
+        for (var t = midnight.AddHours(-24); t < midnight; t = t.AddHours(1))
+        {
+            if (hourly.TryGetValue(t, out var ph) && ph.Precip > 0) return false;
+        }
+
+        return true;
     }
 
     // ── Weather code → emoji + description ────────────────────────────────
@@ -195,6 +220,7 @@ public class DayForecast
     public DateTime  Sunrise            { get; set; }
     public DateTime  Sunset             { get; set; }
     public bool      IsMtbDay           { get; set; }
+    public bool      IsCampingDay       { get; set; }
 }
 
 // ── Geo models ────────────────────────────────────────────────────────────
