@@ -168,6 +168,16 @@ html, body {
     box-shadow: 0 0 6px rgba(251, 146, 60, 0.75);
 }
 
+.wx-indicator-dot--firepit {
+    background: #fbbf24;
+    box-shadow: 0 0 6px rgba(251, 191, 36, 0.75);
+}
+
+/* Green border when one or more indicators are active for the day */
+.wx-cal-cell--indicator {
+    border-color: #4ade80 !important;
+}
+
 /* MTB dot inside hour card — inline at top of flow */
 .wx-mtb-dot {
     width: 8px;
@@ -195,6 +205,16 @@ html, body {
     font-weight: 400;
     color: #666;
     font-size: .78rem;
+}
+
+.wx-cal-humidity {
+    font-size: .62rem;
+    color: #555;
+    line-height: 1;
+}
+
+.wx-cal-humidity span {
+    color: #444;
 }
 
 .wx-cal-meta {

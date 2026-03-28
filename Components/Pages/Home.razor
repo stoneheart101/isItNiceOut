@@ -107,6 +107,17 @@
                                @onchange="async _ => await ToggleCamping(modalLat, modalLon)" />
                     </div>
                 </div>
+                <div class="wx-indicator-row mt-3">
+                    <div>
+                        <div class="fw-semibold small">Fire pit evenings</div>
+                        <div class="text-secondary" style="font-size:.75rem;">Day 65–80°F, night 50–60°F, no rain</div>
+                    </div>
+                    <div class="form-check form-switch mb-0">
+                        <input class="form-check-input" type="checkbox" role="switch"
+                               checked="@FirePitOnFor(modalLat, modalLon)"
+                               @onchange="async _ => await ToggleFirePit(modalLat, modalLon)" />
+                    </div>
+                </div>
                 @if (ModalSavedPlace != null)
                 {
                     <hr class="border-secondary my-3" />
@@ -238,6 +249,10 @@ else if (hourlyDisplay.Count > 0)
                         {
                             <div class="wx-indicator-dot wx-indicator-dot--camping" title="Good backyard camping night"></div>
                         }
+                        @if (day.Forecast.IsFirePitDay && showFirePit)
+                        {
+                            <div class="wx-indicator-dot wx-indicator-dot--firepit" title="Good fire pit evening"></div>
+                        }
                     </div>
                     <div class="wx-cal-bars-right">
                         <div class="wx-rain-drops">
@@ -261,6 +276,10 @@ else if (hourlyDisplay.Count > 0)
                         <div class="wx-cal-temps">
                             @((int)day.Forecast.TempMax)°&nbsp;<span>/ @((int)day.Forecast.TempMin)°</span>
                         </div>
+                        @if (day.Forecast.HumidityDay >= 0)
+                        {
+                            <div class="wx-cal-humidity">@(day.Forecast.HumidityDay)%&nbsp;<span>/ @(day.Forecast.HumidityNight)%</span></div>
+                        }
                     </div>
                 }
             </div>
@@ -365,6 +384,10 @@ else
     bool showCamping = false;
     const string CampingPrefsKey = "isItNiceOut_campingPrefs";
 
+    Dictionary<string, bool> firePitPrefs = new();
+    bool showFirePit = false;
+    const string FirePitPrefsKey = "isItNiceOut_firePitPrefs";
+
     string MtbKey(double lat, double lon) => $"{lat:F4},{lon:F4}";
 
     // ── Lifecycle ──────────────────────────────────────────────────────────
@@ -413,22 +436,25 @@ else
     void BuildHourlyDisplay(HourlyForecast? hf, DateTime sunrise, DateTime sunset)
     {
         if (hf == null) { hourlyDisplay = []; return; }
-        var now         = DateTime.Now;
-        int currentHour = now.Hour;
-        int firstHour = Math.Max(0, currentHour - 1);
-        int lastHour  = currentHour + 12;
+        var now = DateTime.Now;
+        // Truncate to the start of the current hour
+        var currentHourStart = new DateTime(now.Year, now.Month, now.Day, now.Hour, 0, 0);
+        var windowStart      = currentHourStart.AddHours(-1);
 
         // Fixed temp scale: -20°F to 120°F
         const double HTempMin   = -20.0;
         const double HTempRange = 140.0;
 
+        // Take 14 consecutive hours (1 past + current + 12 future), spanning into tomorrow if needed
         hourlyDisplay = hf.Hours
-            .Where(h => h.Time.Hour >= firstHour && h.Time.Hour <= lastHour)
+            .OrderBy(h => h.Time)
+            .Where(h => h.Time >= windowStart)
+            .Take(14)
             .Select(h =>
             {
                 var (emoji, _) = WeatherService.GetWeatherInfo(h.WeatherCode);
-                bool isNow  = h.Time.Hour == currentHour;
-                bool isPast = h.Time.Hour < currentHour;
+                bool isNow  = h.Time == currentHourStart;
+                bool isPast = h.Time < currentHourStart;
 
                 bool isMtb = IsMtbHour(h, hf.AllPrecip, sunrise, sunset);
 
@@ -543,7 +569,8 @@ else
     {
         location = loc;
         showMtb = mtbPrefs.GetValueOrDefault(MtbKey(loc.Latitude, loc.Longitude), false);
-        showCamping = campingPrefs.GetValueOrDefault(MtbKey(loc.Latitude, loc.Longitude), false);
+        showCamping  = campingPrefs.GetValueOrDefault(MtbKey(loc.Latitude, loc.Longitude), false);
+        showFirePit  = firePitPrefs.GetValueOrDefault(MtbKey(loc.Latitude, loc.Longitude), false);
         forecast = await Weather.GetForecastAsync(loc.Latitude, loc.Longitude);
         calendarDays = BuildCalendar();
         secondsLeft = RefreshIntervalSeconds;
@@ -612,6 +639,13 @@ else
             catch { campingPrefs = new(); }
         }
 
+        var fpJson = await JS.InvokeAsync<string?>("localStorageGet", FirePitPrefsKey);
+        if (!string.IsNullOrEmpty(fpJson))
+        {
+            try { firePitPrefs = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, bool>>(fpJson) ?? new(); }
+            catch { firePitPrefs = new(); }
+        }
+
         StateHasChanged();
     }
 
@@ -659,6 +693,25 @@ else
 
     bool CampingOnFor(double lat, double lon) =>
         campingPrefs.GetValueOrDefault(MtbKey(lat, lon), false);
+
+    async Task ToggleFirePit(double lat, double lon)
+    {
+        var key = MtbKey(lat, lon);
+        firePitPrefs[key] = !firePitPrefs.GetValueOrDefault(key, false);
+        if (location != null &&
+            Math.Abs(location.Latitude - lat) < 0.01 &&
+            Math.Abs(location.Longitude - lon) < 0.01)
+        {
+            showFirePit = firePitPrefs[key];
+            calendarDays = BuildCalendar();
+        }
+        var json = System.Text.Json.JsonSerializer.Serialize(firePitPrefs);
+        await JS.InvokeVoidAsync("localStorageSet", FirePitPrefsKey, json);
+        StateHasChanged();
+    }
+
+    bool FirePitOnFor(double lat, double lon) =>
+        firePitPrefs.GetValueOrDefault(MtbKey(lat, lon), false);
 
     async Task RemoveSavedPlace(SavedPlace place)
     {
@@ -736,6 +789,10 @@ else
                 ? (isToday ? "wx-cal-cell wx-cal-cell--today" : "wx-cal-cell")
                 : "wx-cal-cell wx-cal-cell--pad";
             if (fc != null) css += " wx-cal-clickable";
+            bool hasIndicator = (fc?.IsMtbDay == true && showMtb) ||
+                                (fc?.IsCampingDay == true && showCamping) ||
+                                (fc?.IsFirePitDay == true && showFirePit);
+            if (hasIndicator && !isToday) css += " wx-cal-cell--indicator";
 
             int tempPct = fc != null
                 ? Math.Clamp((int)Math.Round((fc.TempMax - TempMin) / TempRange * 100), 0, 100)

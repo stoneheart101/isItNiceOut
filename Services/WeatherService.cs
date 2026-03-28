@@ -44,7 +44,9 @@ public class WeatherService(HttpClient http)
             double precip = raw.Hourly.Precipitation.Count > i ? raw.Hourly.Precipitation[i] : 0;
             allPrecip[dt] = precip;
 
-            if (DateOnly.FromDateTime(dt) != date) continue;
+            // Include today AND tomorrow so a late-evening window can span midnight
+            var dtDate = DateOnly.FromDateTime(dt);
+            if (dtDate != date && dtDate != date.AddDays(1)) continue;
             hours.Add(new HourForecast
             {
                 Time              = dt,
@@ -66,7 +68,7 @@ public class WeatherService(HttpClient http)
         // past_days=1 gives yesterday's hourly precip for accurate "prior 24h" MTB check
         var url = $"https://api.open-meteo.com/v1/forecast" +
                   $"?latitude={lat}&longitude={lon}" +
-                  $"&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,windspeed_10m_max,sunrise,sunset" +
+                  $"&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,windspeed_10m_max,sunrise,sunset,relative_humidity_2m_max,relative_humidity_2m_min" +
                   $"&hourly=temperature_2m,precipitation" +
                   $"&forecast_days=16&past_days=1" +
                   $"&timezone=auto&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch";
@@ -109,15 +111,21 @@ public class WeatherService(HttpClient http)
                 WindSpeedMph        = raw.Daily.WindSpeedMax[i],
                 Sunrise             = sunrise,
                 Sunset              = sunset,
+                // Min humidity = daytime (warm/dry), Max = nighttime (cool/moist)
+                HumidityDay   = raw.Daily.HumidityMin.Count  > i ? raw.Daily.HumidityMin[i]  : -1,
+                HumidityNight = raw.Daily.HumidityMax.Count  > i ? raw.Daily.HumidityMax[i]  : -1,
             };
 
             day.IsMtbDay = ComputeMtbDay(day, hourly);
             days.Add(day);
         }
 
-        // Camping check needs next-day precip probability
+        // Camping + fire pit checks (camping needs next-day data)
         for (int j = 0; j < days.Count; j++)
-            days[j].IsCampingDay = ComputeCampingDay(days[j], j + 1 < days.Count ? days[j + 1] : null, hourly);
+        {
+            days[j].IsCampingDay  = ComputeCampingDay(days[j], j + 1 < days.Count ? days[j + 1] : null, hourly);
+            days[j].IsFirePitDay  = ComputeFirePitDay(days[j]);
+        }
 
         return new WeatherForecast { Days = days };
     }
@@ -179,6 +187,13 @@ public class WeatherService(HttpClient http)
         return true;
     }
 
+    // ── Fire pit suitability ───────────────────────────────────────────────
+    // Criteria: 0% precip probability, daytime high 65–80°F, overnight low 50–60°F.
+    static bool ComputeFirePitDay(DayForecast day) =>
+        day.PrecipProbability == 0 &&
+        day.TempMax >= 65 && day.TempMax <= 80 &&
+        day.TempMin >= 50 && day.TempMin <= 60;
+
     // ── Weather code → emoji + description ────────────────────────────────
     public static (string Emoji, string Description) GetWeatherInfo(int code) => code switch
     {
@@ -221,6 +236,9 @@ public class DayForecast
     public DateTime  Sunset             { get; set; }
     public bool      IsMtbDay           { get; set; }
     public bool      IsCampingDay       { get; set; }
+    public bool      IsFirePitDay       { get; set; }
+    public int       HumidityDay        { get; set; } = -1; // daytime (min)
+    public int       HumidityNight      { get; set; } = -1; // nighttime (max)
 }
 
 // ── Geo models ────────────────────────────────────────────────────────────
@@ -258,6 +276,8 @@ public class OpenMeteoDaily
     [JsonPropertyName("windspeed_10m_max")]             public List<double> WindSpeedMax       { get; set; } = [];
     [JsonPropertyName("sunrise")]                       public List<string> Sunrise            { get; set; } = [];
     [JsonPropertyName("sunset")]                        public List<string> Sunset             { get; set; } = [];
+    [JsonPropertyName("relative_humidity_2m_max")]      public List<int>    HumidityMax        { get; set; } = [];
+    [JsonPropertyName("relative_humidity_2m_min")]      public List<int>    HumidityMin        { get; set; } = [];
 }
 
 // Slim hourly model for MTB computation (temp + precip only)
