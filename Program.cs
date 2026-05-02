@@ -1,10 +1,16 @@
 using IsItNiceOut.Data;
 using IsItNiceOut.Services;
+using Microsoft.AspNetCore.Components.Server;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.WebHost.UseUrls("http://0.0.0.0:5000");
+
+builder.Services.Configure<CircuitOptions>(options =>
+{
+    options.DetailedErrors = builder.Environment.IsDevelopment();
+});
 
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();

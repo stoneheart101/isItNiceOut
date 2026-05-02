@@ -567,6 +567,59 @@ html, body {
 }
 
 /* =========================================================
+   Forecast API debug (collapsible)
+   ========================================================= */
+
+.wx-debug-details {
+    background: #1a1a1a;
+}
+
+.wx-debug-details__summary {
+    cursor: pointer;
+    user-select: none;
+    color: #aaa;
+    list-style: none;
+}
+
+.wx-debug-details__summary::-webkit-details-marker {
+    display: none;
+}
+
+.wx-debug-details__summary::before {
+    content: "▸ ";
+    display: inline-block;
+    transition: transform 0.15s;
+    color: #888;
+}
+
+.wx-debug-details[open] .wx-debug-details__summary::before {
+    transform: rotate(90deg);
+}
+
+.wx-debug-details__body {
+    font-size: 0.75rem;
+    color: #ccc;
+}
+
+.wx-debug-pre {
+    margin: 0;
+    padding: 0.5rem 0.65rem;
+    background: #111;
+    border: 1px solid #2d2d2d;
+    border-radius: 0.25rem;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 8rem;
+    overflow: auto;
+    font-size: 0.7rem;
+    color: #ddd;
+}
+
+.wx-debug-pre--tall {
+    max-height: 24rem;
+}
+
+/* =========================================================
    Utilities
    ========================================================= */
 

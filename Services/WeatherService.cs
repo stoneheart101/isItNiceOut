@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace IsItNiceOut.Services;
@@ -25,6 +26,26 @@ public class WeatherService(HttpClient http)
     // Hourly view for a specific day (full detail + prior precip for MTB check)
     public async Task<HourlyForecast?> GetHourlyForecastAsync(double lat, double lon, DateOnly date)
     {
+        try
+        {
+            return await GetHourlyForecastCoreAsync(lat, lon, date);
+        }
+        catch (HttpRequestException)
+        {
+            return null;
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return null;
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    async Task<HourlyForecast?> GetHourlyForecastCoreAsync(double lat, double lon, DateOnly date)
+    {
         // past_days=1 gives yesterday's precip for the "prior 24h dry" MTB check
         var url = $"https://api.open-meteo.com/v1/forecast" +
                   $"?latitude={lat}&longitude={lon}" +
@@ -37,11 +58,11 @@ public class WeatherService(HttpClient http)
         var hours     = new List<HourForecast>();
         var allPrecip = new Dictionary<DateTime, double>();
 
-        int n = raw.Hourly.Time.Count;
+        int n = SafeHourlyRowCount(raw.Hourly);
         for (int i = 0; i < n; i++)
         {
             var dt     = DateTime.Parse(raw.Hourly.Time[i]);
-            double precip = raw.Hourly.Precipitation.Count > i ? raw.Hourly.Precipitation[i] : 0;
+            double precip = raw.Hourly.Precipitation[i];
             allPrecip[dt] = precip;
 
             // Include today AND tomorrow so a late-evening window can span midnight
@@ -65,16 +86,88 @@ public class WeatherService(HttpClient http)
     // 10-day daily forecast + MTB suitability
     public async Task<WeatherForecast?> GetForecastAsync(double lat, double lon)
     {
-        // past_days=1 gives yesterday's hourly precip for accurate "prior 24h" MTB check
-        var url = $"https://api.open-meteo.com/v1/forecast" +
-                  $"?latitude={lat}&longitude={lon}" +
-                  $"&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,windspeed_10m_max,sunrise,sunset,relative_humidity_2m_max,relative_humidity_2m_min" +
-                  $"&hourly=temperature_2m,precipitation" +
-                  $"&forecast_days=16&past_days=1" +
-                  $"&timezone=auto&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch";
+        var r = await GetForecastWithDiagnosticsAsync(lat, lon);
+        if (r.Forecast != null && r.Forecast.Days.Count > 0)
+            return r.Forecast;
+        return null;
+    }
 
-        var raw = await http.GetFromJsonAsync<OpenMeteoResponse>(url);
-        if (raw?.Daily == null) return null;
+    /// <summary>Fetches forecast and captures URL/raw body when the payload is missing or unusable (for troubleshooting).</summary>
+    public async Task<ForecastFetchResult> GetForecastWithDiagnosticsAsync(double lat, double lon)
+    {
+        var url = BuildOpenMeteoForecastUrl(lat, lon);
+        string httpStatus;
+        string body;
+        try
+        {
+            using var response = await http.GetAsync(url);
+            httpStatus = $"{(int)response.StatusCode} {response.ReasonPhrase ?? ""}".Trim();
+            body = await response.Content.ReadAsStringAsync();
+        }
+        catch (Exception ex)
+        {
+            return new ForecastFetchResult(null, url, $"{ex.GetType().Name}: {ex.Message}", null);
+        }
+
+        OpenMeteoResponse? raw = null;
+        try
+        {
+            raw = JsonSerializer.Deserialize<OpenMeteoResponse>(body);
+        }
+        catch
+        {
+            // leave raw null
+        }
+
+        WeatherForecast? fc = null;
+        if (raw != null)
+        {
+            try
+            {
+                fc = MapOpenMeteoDailyToForecast(raw);
+            }
+            catch
+            {
+                fc = null;
+            }
+        }
+
+        bool usable = fc != null && fc.Days.Count > 0;
+        // Parsing always uses full `body`; only the diagnostic panel text may be shortened.
+        return new ForecastFetchResult(fc, url, httpStatus, usable ? null : FormatResponseBodyForDiagnosticPanel(body));
+    }
+
+    static string BuildOpenMeteoForecastUrl(double lat, double lon) =>
+        $"https://api.open-meteo.com/v1/forecast" +
+        $"?latitude={lat}&longitude={lon}" +
+        $"&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,windspeed_10m_max,sunrise,sunset,relative_humidity_2m_max,relative_humidity_2m_min" +
+        $"&hourly=temperature_2m,precipitation" +
+        $"&forecast_days=16&past_days=1" +
+        $"&timezone=auto&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch";
+
+    /// <summary>
+    /// Large Open-Meteo payloads can exceed 14k+ chars; show start + end so API error fields near the end stay visible.
+    /// Does not affect <see cref="MapOpenMeteoDailyToForecast"/> — that always runs on the full response string.
+    /// </summary>
+    static string? FormatResponseBodyForDiagnosticPanel(string? body, int headChars = 120_000, int tailChars = 120_000)
+    {
+        if (string.IsNullOrEmpty(body)) return "(empty body)";
+        int n = body.Length;
+        int maxShown = headChars + tailChars;
+        if (n <= maxShown)
+            return body;
+
+        int omitted = n - headChars - tailChars;
+        return body[..headChars]
+            + "\n\n… "
+            + omitted.ToString()
+            + " characters omitted (full response was parsed; this panel is shortened only) …\n\n"
+            + body[(n - tailChars)..];
+    }
+
+    static WeatherForecast? MapOpenMeteoDailyToForecast(OpenMeteoResponse raw)
+    {
+        if (raw.Daily == null) return null;
 
         // Build hourly lookup: DateTime (truncated to hour) → (temp, precip)
         var hourly = new Dictionary<DateTime, (double Temp, double Precip)>();
@@ -92,7 +185,8 @@ public class WeatherService(HttpClient http)
         var today = DateOnly.FromDateTime(DateTime.Today);
         var days  = new List<DayForecast>();
 
-        for (int i = 0; i < raw.Daily.Time.Count; i++)
+        int dailyRows = SafeDailyRowCount(raw.Daily);
+        for (int i = 0; i < dailyRows; i++)
         {
             var date = DateOnly.Parse(raw.Daily.Time[i]);
             if (date < today) continue; // skip the past_day entry
@@ -128,6 +222,33 @@ public class WeatherService(HttpClient http)
         }
 
         return new WeatherForecast { Days = days };
+    }
+
+    /// <summary>Avoids index exceptions when Open-Meteo returns uneven array lengths.</summary>
+    static int SafeDailyRowCount(OpenMeteoDaily d)
+    {
+        int n = d.Time.Count;
+        if (n == 0) return 0;
+        n = Math.Min(n, d.WeatherCode.Count);
+        n = Math.Min(n, d.TemperatureMax.Count);
+        n = Math.Min(n, d.TemperatureMin.Count);
+        n = Math.Min(n, d.PrecipitationSum.Count);
+        n = Math.Min(n, d.PrecipitationProbabilityMax.Count);
+        n = Math.Min(n, d.WindSpeedMax.Count);
+        return n;
+    }
+
+    static int SafeHourlyRowCount(OpenMeteoHourly h)
+    {
+        int n = h.Time.Count;
+        if (n == 0) return 0;
+        n = Math.Min(n, h.Temperature.Count);
+        n = Math.Min(n, h.ApparentTemperature.Count);
+        n = Math.Min(n, h.WeatherCode.Count);
+        n = Math.Min(n, h.PrecipitationProbability.Count);
+        n = Math.Min(n, h.WindSpeed.Count);
+        n = Math.Min(n, h.Precipitation.Count);
+        return n;
     }
 
     // ── MTB suitability ────────────────────────────────────────────────────
@@ -215,6 +336,12 @@ public class WeatherService(HttpClient http)
         _         => ("🌡️", "Unknown")
     };
 }
+
+public sealed record ForecastFetchResult(
+    WeatherForecast? Forecast,
+    string RequestUrl,
+    string HttpStatus,
+    string? ResponseBody);
 
 // ── Daily forecast models ──────────────────────────────────────────────────
 

@@ -2,6 +2,7 @@
 @rendermode InteractiveServer
 @inject WeatherService Weather
 @inject IJSRuntime JS
+@inject IWebHostEnvironment HostEnv
 @implements IDisposable
 
 <PageTitle>Is It Nice Out?</PageTitle>
@@ -69,7 +70,24 @@
 
 @if (errorMessage != null)
 {
-    <div class="alert alert-danger">@errorMessage</div>
+    <div class="alert alert-danger mb-2">@errorMessage</div>
+    @if (ShowForecastFetchDebug)
+    {
+        <details class="wx-debug-details border border-secondary rounded mb-3">
+            <summary class="wx-debug-details__summary px-3 py-2 small">Request and response</summary>
+            <div class="wx-debug-details__body px-3 pb-3 small border-top border-secondary">
+                <div class="text-secondary mb-1 mt-2">Request URL</div>
+                <pre class="wx-debug-pre mb-3">@forecastDebugRequestUrl</pre>
+                <div class="text-secondary mb-1">HTTP status</div>
+                <pre class="wx-debug-pre mb-3">@forecastDebugHttpStatus</pre>
+                <div class="text-secondary mb-1">Response body</div>
+                <p class="text-secondary mb-2" style="font-size:.68rem;">
+                    The app parses the full HTTP body before this view; if you see &quot;omitted&quot; below, only this panel is shortened.
+                </p>
+                <pre class="wx-debug-pre wx-debug-pre--tall">@(forecastDebugResponseBody ?? "(none)")</pre>
+            </div>
+        </details>
+    }
 }
 
 
@@ -293,6 +311,15 @@ else if (loading)
         <p class="mt-2 small">Loading forecast…</p>
     </div>
 }
+else if (savedPlaces.Count > 0 || location != null)
+{
+    <div class="text-center text-secondary py-5">
+        <p class="small mb-2">Forecast couldn't be loaded for this location.</p>
+        <button type="button" class="btn btn-outline-warning btn-sm" @onclick="RetryLoadForecastAsync">
+            Try again
+        </button>
+    </div>
+}
 else
 {
     <div class="text-center text-secondary py-5">
@@ -321,6 +348,21 @@ else
         showSuggestions = false;
     }
     string? errorMessage;
+    const string NoForecastDataMessage = "No forecast data was returned. The weather service may be busy; try again.";
+    string? forecastDebugRequestUrl;
+    string? forecastDebugHttpStatus;
+    string? forecastDebugResponseBody;
+
+    bool ShowForecastFetchDebug =>
+        errorMessage == NoForecastDataMessage &&
+        !string.IsNullOrEmpty(forecastDebugRequestUrl);
+
+    void ClearForecastFetchDebug()
+    {
+        forecastDebugRequestUrl = null;
+        forecastDebugHttpStatus = null;
+        forecastDebugResponseBody = null;
+    }
     GeoLocation? location;
     WeatherForecast? forecast;
     List<CalendarDay> calendarDays = [];
@@ -504,6 +546,7 @@ else
     {
         cityInput = e.Value?.ToString() ?? "";
         errorMessage = null;
+        ClearForecastFetchDebug();
 
         _suggestCts?.Cancel();
         _suggestCts = new CancellationTokenSource();
@@ -535,6 +578,7 @@ else
     {
         CloseLocationModal();
         errorMessage = null;
+        ClearForecastFetchDebug();
         // Save immediately unless already saved
         if (!savedPlaces.Any(p => Math.Abs(p.Latitude - loc.Latitude) < 0.01 && Math.Abs(p.Longitude - loc.Longitude) < 0.01))
         {
@@ -567,26 +611,69 @@ else
     // ── Location / forecast ────────────────────────────────────────────────
     async Task ApplyLocation(GeoLocation loc)
     {
-        location = loc;
-        showMtb = mtbPrefs.GetValueOrDefault(MtbKey(loc.Latitude, loc.Longitude), false);
-        showCamping  = campingPrefs.GetValueOrDefault(MtbKey(loc.Latitude, loc.Longitude), false);
-        showFirePit  = firePitPrefs.GetValueOrDefault(MtbKey(loc.Latitude, loc.Longitude), false);
-        forecast = await Weather.GetForecastAsync(loc.Latitude, loc.Longitude);
-        calendarDays = BuildCalendar();
-        secondsLeft = RefreshIntervalSeconds;
-        await LoadTodayHourly();
+        errorMessage = null;
+        ClearForecastFetchDebug();
+        try
+        {
+            var fetch = await Weather.GetForecastWithDiagnosticsAsync(loc.Latitude, loc.Longitude);
+            var fc = fetch.Forecast;
+            if (fc == null || fc.Days.Count == 0)
+            {
+                errorMessage = NoForecastDataMessage;
+                forecastDebugRequestUrl = fetch.RequestUrl;
+                forecastDebugHttpStatus = fetch.HttpStatus;
+                forecastDebugResponseBody = fetch.ResponseBody;
+                return;
+            }
+
+            forecast = fc;
+            showMtb = mtbPrefs.GetValueOrDefault(MtbKey(loc.Latitude, loc.Longitude), false);
+            showCamping = campingPrefs.GetValueOrDefault(MtbKey(loc.Latitude, loc.Longitude), false);
+            showFirePit = firePitPrefs.GetValueOrDefault(MtbKey(loc.Latitude, loc.Longitude), false);
+            calendarDays = BuildCalendar();
+            secondsLeft = RefreshIntervalSeconds;
+            location = loc;
+            await LoadTodayHourly();
+        }
+        catch (TaskCanceledException)
+        {
+            ClearForecastFetchDebug();
+            errorMessage = "The request timed out. Try again.";
+        }
+        catch (Exception ex)
+        {
+            ClearForecastFetchDebug();
+            errorMessage = HostEnv.IsDevelopment()
+                ? ex.Message
+                : "Something went wrong loading the forecast. Try again.";
+        }
     }
 
     async Task RefreshForecast()
     {
         if (location == null) return;
+        ClearForecastFetchDebug();
         loading = true;
         StateHasChanged();
         try
         {
-            forecast = await Weather.GetForecastAsync(location.Latitude, location.Longitude);
+            var fc = await Weather.GetForecastAsync(location.Latitude, location.Longitude);
+            if (fc == null || fc.Days.Count == 0)
+            {
+                errorMessage = "Refresh failed; still showing the last loaded forecast.";
+                return;
+            }
+
+            errorMessage = null;
+            forecast = fc;
             calendarDays = BuildCalendar();
             await LoadTodayHourly();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = HostEnv.IsDevelopment()
+                ? ex.Message
+                : "Refresh failed; still showing the last loaded forecast.";
         }
         finally { loading = false; StateHasChanged(); }
     }
@@ -600,11 +687,44 @@ else
         StateHasChanged();
         try
         {
-            var hf = await Weather.GetHourlyForecastAsync(location.Latitude, location.Longitude, today);
-            var dayFc = forecast?.Days.FirstOrDefault(d => d.Date == today);
-            BuildHourlyDisplay(hf, dayFc?.Sunrise ?? default, dayFc?.Sunset ?? default);
+            try
+            {
+                var hf = await Weather.GetHourlyForecastAsync(location.Latitude, location.Longitude, today);
+                var dayFc = forecast?.Days.FirstOrDefault(d => d.Date == today);
+                BuildHourlyDisplay(hf, dayFc?.Sunrise ?? default, dayFc?.Sunset ?? default);
+            }
+            catch (Exception)
+            {
+                hourlyDisplay = [];
+                hourlyDataCount = 0;
+            }
         }
         finally { hourlyLoading = false; StateHasChanged(); }
+    }
+
+    async Task RetryLoadForecastAsync()
+    {
+        errorMessage = null;
+        ClearForecastFetchDebug();
+        if (location != null)
+        {
+            var loc = new GeoLocation
+            {
+                Name = location.Name,
+                Region = location.Region,
+                Country = location.Country,
+                Latitude = location.Latitude,
+                Longitude = location.Longitude,
+            };
+            loading = true;
+            StateHasChanged();
+            try { await ApplyLocation(loc); }
+            finally { loading = false; StateHasChanged(); }
+        }
+        else if (savedPlaces.Count > 0)
+        {
+            await LoadSavedPlace(savedPlaces[0]);
+        }
     }
 
     async Task ManualRefresh()
