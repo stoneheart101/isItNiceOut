@@ -50,7 +50,7 @@ public class WeatherService(HttpClient http)
         var url = $"https://api.open-meteo.com/v1/forecast" +
                   $"?latitude={lat}&longitude={lon}" +
                   $"&hourly=temperature_2m,apparent_temperature,weather_code,precipitation_probability,windspeed_10m,precipitation" +
-                  $"&forecast_days=16&past_days=1&timezone=auto&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch";
+                  $"&forecast_days=16&past_days=1&timezone=UTC&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch";
 
         var raw = await http.GetFromJsonAsync<OpenMeteoHourlyResponse>(url);
         if (raw?.Hourly == null) return null;
@@ -61,7 +61,7 @@ public class WeatherService(HttpClient http)
         int n = SafeHourlyRowCount(raw.Hourly);
         for (int i = 0; i < n; i++)
         {
-            var dt     = DateTime.Parse(raw.Hourly.Time[i]);
+            var dt     = DateTime.SpecifyKind(DateTime.Parse(raw.Hourly.Time[i]), DateTimeKind.Utc);
             double precip = raw.Hourly.Precipitation[i];
             allPrecip[dt] = precip;
 
@@ -143,7 +143,7 @@ public class WeatherService(HttpClient http)
         $"&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,windspeed_10m_max,sunrise,sunset,relative_humidity_2m_max,relative_humidity_2m_min" +
         $"&hourly=temperature_2m,precipitation" +
         $"&forecast_days=16&past_days=1" +
-        $"&timezone=auto&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch";
+        $"&timezone=UTC&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch";
 
     /// <summary>
     /// Large Open-Meteo payloads can exceed 14k+ chars; show start + end so API error fields near the end stay visible.
@@ -177,7 +177,7 @@ public class WeatherService(HttpClient http)
                     Math.Min(raw.Hourly.Temperature.Count, raw.Hourly.Precipitation.Count));
             for (int i = 0; i < n; i++)
             {
-                var dt = DateTime.Parse(raw.Hourly.Time[i]);
+                var dt = DateTime.SpecifyKind(DateTime.Parse(raw.Hourly.Time[i]), DateTimeKind.Utc);
                 hourly[dt] = (raw.Hourly.Temperature[i], raw.Hourly.Precipitation[i]);
             }
         }

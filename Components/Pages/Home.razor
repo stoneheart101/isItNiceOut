@@ -378,6 +378,15 @@ else
     int secondsLeft = RefreshIntervalSeconds;
     Timer? _timer;
 
+    int? clientTimezoneOffsetMinutes;
+
+    DateTime ToClientLocal(DateTime utc)
+    {
+        if (clientTimezoneOffsetMinutes is null) return utc;
+        // JS getTimezoneOffset: minutes to add to local to get UTC.
+        return utc.AddMinutes(-clientTimezoneOffsetMinutes.Value);
+    }
+
     // ── Hourly state ───────────────────────────────────────────────────────
     bool hourlyLoading = false;
     List<HourDisplay> hourlyDisplay = [];
@@ -436,6 +445,14 @@ else
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (!firstRender) return;
+        try
+        {
+            clientTimezoneOffsetMinutes = await JS.InvokeAsync<int>("getClientTimezoneOffsetMinutes");
+        }
+        catch
+        {
+            clientTimezoneOffsetMinutes = null;
+        }
         await LoadSavedPlacesFromStorage();
         if (savedPlaces.Count > 0)
             await LoadSavedPlace(savedPlaces[0]);
@@ -478,7 +495,7 @@ else
     void BuildHourlyDisplay(HourlyForecast? hf, DateTime sunrise, DateTime sunset)
     {
         if (hf == null) { hourlyDisplay = []; return; }
-        var now = DateTime.Now;
+        var now = ToClientLocal(DateTime.UtcNow);
         // Truncate to the start of the current hour
         var currentHourStart = new DateTime(now.Year, now.Month, now.Day, now.Hour, 0, 0);
         var windowStart      = currentHourStart.AddHours(-1);
@@ -490,13 +507,14 @@ else
         // Take 14 consecutive hours (1 past + current + 12 future), spanning into tomorrow if needed
         hourlyDisplay = hf.Hours
             .OrderBy(h => h.Time)
-            .Where(h => h.Time >= windowStart)
+            .Where(h => ToClientLocal(h.Time) >= windowStart)
             .Take(14)
             .Select(h =>
             {
                 var (emoji, _) = WeatherService.GetWeatherInfo(h.WeatherCode);
-                bool isNow  = h.Time == currentHourStart;
-                bool isPast = h.Time < currentHourStart;
+                var localTime = ToClientLocal(h.Time);
+                bool isNow  = localTime == currentHourStart;
+                bool isPast = localTime < currentHourStart;
 
                 bool isMtb = IsMtbHour(h, hf.AllPrecip, sunrise, sunset);
 
@@ -507,7 +525,7 @@ else
                 int tempBarPct = Math.Clamp((int)Math.Round((h.Temperature - HTempMin) / HTempRange * 100), 0, 100);
                 int rainDrops = Math.Clamp((int)Math.Round(h.PrecipProbability / 5.0), 0, 20);
 
-                string label = h.Time.ToString("h tt").ToLower();
+                string label = localTime.ToString("h tt").ToLower();
                 return new HourDisplay(label, css, emoji, h.Temperature, h.ApparentTemp,
                                        h.PrecipProbability, h.WindSpeedMph, isMtb,
                                        tempBarPct, rainDrops);

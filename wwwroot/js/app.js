@@ -13,3 +13,6 @@ window.scrollIntoView = (id) => {
 // localStorage helpers for saved places
 window.localStorageGet = (key) => localStorage.getItem(key);
 window.localStorageSet = (key, value) => localStorage.setItem(key, value);
+
+// Client timezone offset in minutes (local -> UTC). Example: EDT returns 240.
+window.getClientTimezoneOffsetMinutes = () => new Date().getTimezoneOffset();
